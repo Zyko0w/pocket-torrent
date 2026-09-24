@@ -64,7 +64,7 @@ export function UpdateBanner () {
   }
 
   return (
-    <div className='banner info' role='status'>
+    <div className='banner info' role='status' data-update-banner>
       <ArrowCircleUp size={16} />
       <span className='banner-text'>
         {error || <>Pocket Torrent <b>{update.version}</b> est disponible. Les téléchargements reprendront tout seuls après le redémarrage.</>}

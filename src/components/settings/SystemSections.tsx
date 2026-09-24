@@ -73,13 +73,24 @@ function UpdateCheck () {
   const toast = useToast()
   const [version, setVersion] = useState('')
   const [busy, setBusy] = useState(false)
+  const [found, setFound] = useState('')
   useEffect(() => { getVersion().then(setVersion).catch(() => {}) }, [])
 
   const run = async () => {
     setBusy(true)
     try {
       const update = await checkForUpdate()
-      if (!update) toast('Pocket Torrent est à jour')
+      if (!update) {
+        setFound('')
+        toast('Pocket Torrent est à jour')
+        return
+      }
+      // le bandeau d'installation est tout en haut de la page, souvent hors de vue d'ici
+      setFound(update.version)
+      toast(`Pocket Torrent ${update.version} est disponible`)
+      requestAnimationFrame(() => {
+        document.querySelector('[data-update-banner]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     } catch (err) {
       toast(`Recherche impossible : ${errorMessage(err)}`)
     } finally {
@@ -89,7 +100,10 @@ function UpdateCheck () {
 
   return (
     <div className='panel-actions' style={{ alignItems: 'center' }}>
-      <span className='help' style={{ margin: 0 }}>Version installée : {version || '…'}</span>
+      <span className='help' style={{ margin: 0 }}>
+        Version installée : {version || '…'}
+        {found && <b className='tone-active'> · {found} disponible (bandeau en haut de la page)</b>}
+      </span>
       <button type='button' className='btn btn-ghost btn-sm' onClick={run} disabled={busy}>
         {busy && <SpinnerGap size={14} className='spin' />} Rechercher une mise à jour
       </button>
