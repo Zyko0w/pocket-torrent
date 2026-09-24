@@ -236,6 +236,17 @@ pub async fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> 
     state.manager.save_settings(input).await.map_err(message)
 }
 
+/// Premier lancement : faut-il demander si Pocket Torrent doit ouvrir les liens magnet ?
+#[tauri::command]
+pub async fn should_ask_link_handler(state: State<'_, AppState>) -> CommandResult<bool> {
+    Ok(state.manager.should_ask_link_handler())
+}
+
+#[tauri::command]
+pub async fn answer_link_handler(state: State<'_, AppState>, enable: bool) -> CommandResult<()> {
+    state.manager.answer_link_handler(enable).map_err(message)
+}
+
 #[tauri::command]
 pub async fn test_notification(state: State<'_, AppState>) -> CommandResult<()> {
     state.manager.test_notification();

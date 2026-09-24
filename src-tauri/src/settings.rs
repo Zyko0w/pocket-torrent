@@ -42,6 +42,9 @@ pub struct Settings {
     /// Cherche une nouvelle version au démarrage (GitHub Releases) et la propose, sans
     /// jamais l'installer d'office. Seule connexion de l'appli qui ne concerne pas un transfert.
     pub check_updates: bool,
+    /// Question « ouvrir les liens magnet avec Pocket Torrent ? » déjà posée (premier lancement) :
+    /// elle ne revient plus, le choix se change ensuite dans les réglages.
+    pub link_handler_asked: bool,
     /// Ancien programme associé aux liens magnet, remis en place si on désactive le nôtre.
     pub magnet_previous: Option<String>,
     /// Ancien programme associé aux fichiers .torrent, remis en place si on désactive le nôtre.
@@ -340,6 +343,7 @@ impl Default for Settings {
             prevent_sleep: true,
             scan_downloads: false,
             check_updates: true,
+            link_handler_asked: false,
             magnet_previous: None,
             torrent_previous: None,
             r2: R2Settings::default(),

@@ -24,6 +24,7 @@ impl Manager {
         next.normalize().map_err(anyhow::Error::msg)?;
         next.magnet_previous = current.magnet_previous.clone();
         next.torrent_previous = current.torrent_previous.clone();
+        next.link_handler_asked = current.link_handler_asked;
         for dir in next.download_roots() {
             std::fs::create_dir_all(&dir)
                 .with_context(|| format!("Impossible de créer le dossier « {} »", dir.display()))?;
@@ -46,6 +47,8 @@ impl Manager {
             let (magnet_previous, torrent_previous) = system::set_link_handler(input.magnet_handler, previous)?;
             next.magnet_previous = magnet_previous;
             next.torrent_previous = torrent_previous;
+            // choisi dans les réglages : la question du premier lancement n'a plus lieu d'être
+            next.link_handler_asked = true;
         }
 
         next.save(&self.settings_path)?;
@@ -83,5 +86,32 @@ impl Manager {
             anyhow!("Renseigne l'identifiant de compte, le bucket et les deux clés, puis enregistre.")
         })??;
         r2.check(&self.http()).await
+    }
+
+    /// Poser la question du premier lancement : jamais posée, et Pocket Torrent n'ouvre pas
+    /// déjà les liens magnet.
+    pub fn should_ask_link_handler(&self) -> bool {
+        !self.settings().link_handler_asked && !system::link_handler_enabled()
+    }
+
+    /// Réponse à la question du premier lancement. En mode dev, rien n'est enregistré ni écrit
+    /// dans Windows : les liens pointeraient vers l'exe de test, et la version installée ne
+    /// poserait plus jamais la question (mêmes réglages).
+    pub fn answer_link_handler(&self, enable: bool) -> anyhow::Result<()> {
+        if cfg!(debug_assertions) {
+            tracing::info!("mode dev : réponse « liens magnet » ({enable}) ni enregistrée ni appliquée");
+            return Ok(());
+        }
+        let mut next = self.settings();
+        if enable && !system::link_handler_enabled() {
+            let previous = (next.magnet_previous.clone(), next.torrent_previous.clone());
+            let (magnet_previous, torrent_previous) = system::set_link_handler(true, previous)?;
+            next.magnet_previous = magnet_previous;
+            next.torrent_previous = torrent_previous;
+        }
+        next.link_handler_asked = true;
+        next.save(&self.settings_path)?;
+        *self.settings.write() = next;
+        Ok(())
     }
 }

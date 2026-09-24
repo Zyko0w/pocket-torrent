@@ -17,6 +17,7 @@ import { SettingsView, type SettingsTab } from './components/SettingsView'
 import { ShareDialog } from './components/ShareDialog'
 import { ToastProvider, useToast } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
+import { LinkHandlerPrompt } from './components/LinkHandlerPrompt'
 import { DropZone } from './components/DropZone'
 import { ShutdownBanner, ShutdownToggle } from './components/PowerControls'
 
@@ -358,6 +359,7 @@ export default function App () {
   return (
     <ToastProvider>
       <DropZone onDropped={onDropped} />
+      <LinkHandlerPrompt />
       <div className='app'>
         <Sidebar
           view={view}
