@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -18,5 +19,12 @@ export default defineConfig({
     target: 'chrome120',
     minify: 'esbuild',
     sourcemap: false
+  },
+  // tests de l'interface (npm test) : navigateur simulé, sans Tauri ni moteur
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['src/test/setup.ts'],
+    restoreMocks: true
   }
 })
