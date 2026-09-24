@@ -54,9 +54,22 @@ pub fn system32(exe: &str) -> PathBuf {
     root.join("System32").join(exe)
 }
 
+/// Outil en ligne de commande lancé sans fenêtre : l'application n'a pas de console
+/// (`windows_subsystem = "windows"`), Windows en ouvrirait donc une à chaque lancement.
+pub fn hidden_command(exe: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut command = std::process::Command::new(exe);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 fn run_shutdown(args: &[&str]) -> anyhow::Result<()> {
-    let status =
-        std::process::Command::new(system32("shutdown.exe")).args(args).status().context("shutdown.exe introuvable")?;
+    let status = hidden_command(system32("shutdown.exe")).args(args).status().context("shutdown.exe introuvable")?;
     anyhow::ensure!(status.success(), "shutdown.exe a échoué ({status})");
     Ok(())
 }
@@ -85,13 +98,22 @@ pub fn reveal(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Un seul accès au presse-papiers à la fois dans tout le programme. Les commandes `async` de
+/// Tauri tournent sur n'importe quel thread tokio : deux lectures simultanées (retour sur la
+/// fenêtre, copie d'un lien) faisaient libérer par un thread le bloc mémoire que l'autre était
+/// en train de lire → corruption du tas (0xc0000374), plantage de l'application en 0.2.1.
+/// Reproduit par `clipboard_stress::concurrent_reads_do_not_corrupt_memory`.
+static CLIPBOARD: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
 /// Copie du texte dans le presse-papiers Windows.
 pub fn copy_text(text: &str) -> anyhow::Result<()> {
+    let _guard = CLIPBOARD.lock();
     imp::copy_text(text)
 }
 
 /// Texte du presse-papiers Windows (au plus `max_chars` caractères), `None` s'il n'y a pas de texte.
 pub fn read_clipboard_text(max_chars: usize) -> Option<String> {
+    let _guard = CLIPBOARD.lock();
     imp::read_clipboard_text(max_chars)
 }
 
@@ -230,6 +252,10 @@ mod imp {
                     anyhow::bail!("mémoire insuffisante pour copier");
                 }
                 let target = GlobalLock(memory).cast::<u16>();
+                if target.is_null() {
+                    GlobalFree(memory);
+                    anyhow::bail!("mémoire insuffisante pour copier");
+                }
                 std::ptr::copy_nonoverlapping(wide.as_ptr(), target, wide.len());
                 GlobalUnlock(memory);
                 if SetClipboardData(CF_UNICODETEXT, memory).is_null() {
@@ -595,5 +621,23 @@ mod clipboard_stress {
             let big: Vec<String> = (0..50).map(|i| "x".repeat(i * 10)).collect();
             std::hint::black_box(big);
         }
+    }
+
+    /// Même chose depuis plusieurs threads à la fois, comme le font les commandes `async`
+    /// de Tauri (un thread tokio différent à chaque retour sur la fenêtre).
+    #[test]
+    #[ignore = "lit le vrai presse-papiers : à lancer à la main"]
+    fn concurrent_reads_do_not_corrupt_memory() {
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..3000 {
+                        std::hint::black_box(super::read_clipboard_text(8192));
+                        let big: Vec<String> = (0..50).map(|i| "x".repeat(i * 10)).collect();
+                        std::hint::black_box(big);
+                    }
+                });
+            }
+        });
     }
 }

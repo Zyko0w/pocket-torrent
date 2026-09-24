@@ -8,7 +8,6 @@
 //! section « Threat : <nom> » par menace sinon. Le fichier scanné n'est pas touché.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub enum ScanResult {
@@ -48,8 +47,10 @@ pub fn available() -> bool {
 /// hors du fil principal (`spawn_blocking`).
 pub fn scan(path: &Path) -> ScanResult {
     let Some(exe) = mpcmdrun_path() else { return ScanResult::Unavailable };
-    let Ok(output) =
-        Command::new(exe).args(["-Scan", "-ScanType", "3", "-DisableRemediation", "-File"]).arg(path).output()
+    let Ok(output) = crate::system::hidden_command(exe)
+        .args(["-Scan", "-ScanType", "3", "-DisableRemediation", "-File"])
+        .arg(path)
+        .output()
     else {
         return ScanResult::Unavailable;
     };
