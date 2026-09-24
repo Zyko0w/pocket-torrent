@@ -35,10 +35,10 @@ describe('JobRow', () => {
     expect(screen.getByText(/aucun pair pour l’instant/)).toBeTruthy()
   })
 
-  it('le menu indique que la priorité ne joue que sur la file d’attente', () => {
+  it('le menu explique l’effet de la priorité (file et débit)', () => {
     renderRow()
     fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
-    expect(screen.getByRole('menuitemradio', { name: /Priorité haute/ }).textContent).toContain('Démarre avant les autres dans la file')
+    expect(screen.getByRole('menuitemradio', { name: /Priorité haute/ }).textContent).toContain('plus de débit que les autres')
   })
 })
 

@@ -459,6 +459,15 @@ impl Engine {
         self.session().stop().await;
     }
 
+    /// Limite de réception propre à un torrent qui tourne (`None` : aucune), en octets/s.
+    /// Sans effet s'il est en pause : la répartition est recalculée chaque seconde.
+    pub fn set_torrent_download_limit(&self, hash: &str, bps: Option<u64>) {
+        let Ok(torrent) = self.handle(hash) else { return };
+        if let Some(live) = torrent.live() {
+            live.set_download_limit(bps.and_then(|b| NonZeroU32::new(b.min(u64::from(u32::MAX)) as u32)));
+        }
+    }
+
     pub fn set_limits(&self, limits: &SpeedLimits) {
         let config = limits_config(limits);
         let session = self.session();
@@ -1081,6 +1090,26 @@ mod sandbox_tests {
         engine.delete(&hash, true).await.unwrap();
         assert!(engine.torrents().iter().all(|t| t.info_hash != hash));
         assert!(!base.join("Film de test 2026.mkv").exists(), "fichier commencé effacé");
+        engine.stop().await;
+    }
+
+    #[tokio::test]
+    async fn per_torrent_download_limit_reaches_the_running_engine() {
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let torrent = make_torrent(&sandbox, &engine).await;
+        let base = sandbox.root.join("telechargements");
+        let hash = engine.add(&torrent.to_string_lossy(), &base, None, false).await.unwrap();
+        let live = loop {
+            if let Some(live) = engine.handle(&hash).unwrap().live() {
+                break live;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        };
+        engine.set_torrent_download_limit(&hash, Some(64 * 1024));
+        assert_eq!(live.download_limit().map(|b| b.get()), Some(64 * 1024));
+        engine.set_torrent_download_limit(&hash, None);
+        assert_eq!(live.download_limit(), None);
         engine.stop().await;
     }
 

@@ -3,7 +3,7 @@
 use super::*;
 
 impl Manager {
-    fn effective_limits(&self) -> SpeedLimits {
+    pub(super) fn effective_limits(&self) -> SpeedLimits {
         let settings = self.settings.read();
         let game = self.game.lock();
         let gm = &settings.game_mode;

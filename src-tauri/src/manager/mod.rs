@@ -29,6 +29,7 @@ use crate::{dns, netif};
 
 mod actions;
 mod add;
+mod bandwidth;
 mod delivery;
 mod directs;
 mod game;
@@ -268,6 +269,8 @@ pub struct Manager {
     adding: Mutex<HashSet<String>>,
     /// Recherches des infos d'un magnet en cours (par identifiant d'attente) : début et pairs trouvés.
     searches: Mutex<HashMap<String, Search>>,
+    /// Répartition de la bande passante selon la priorité (voir bandwidth.rs).
+    bandwidth: Mutex<bandwidth::BandwidthState>,
     game: Mutex<GameState>,
     processes: Mutex<ProcessWatcher>,
     /// Reconstruit quand le VPN change (adresse source, ou blocage s'il est coupé).
@@ -383,6 +386,7 @@ impl Manager {
             tasks: Mutex::new(HashMap::new()),
             adding: Mutex::new(HashSet::new()),
             searches: Mutex::new(HashMap::new()),
+            bandwidth: Mutex::new(Default::default()),
             game: Mutex::new(GameState::default()),
             processes: Mutex::new(ProcessWatcher::new()),
             network: RwLock::new(network),

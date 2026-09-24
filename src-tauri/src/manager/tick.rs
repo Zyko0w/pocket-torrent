@@ -35,6 +35,7 @@ impl Manager {
                 }
                 manager.check_seeding_limits(&views).await;
                 manager.schedule(&views).await;
+                manager.balance_bandwidth(&views);
                 // planificateur de limites (§5) : réévalué chaque tick pour suivre l'heure
                 if manager.settings.read().schedule.enabled {
                     manager.apply_limits();

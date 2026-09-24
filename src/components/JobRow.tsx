@@ -168,11 +168,11 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
     menu.push({ label: 'Démarrer maintenant', icon: <Lightning size={16} />, onSelect: () => run(() => api.startNow(job.id)) })
   }
   if (!finished) {
-    // la priorité règle l'ordre de la file d'attente (voir queue.rs), pas la vitesse
+    // ordre de la file d'attente (queue.rs) et part du débit face aux autres (bandwidth.rs)
     const hints: Record<Priority, string> = {
-      high: 'Démarre avant les autres dans la file',
-      normal: 'Ordre d’ajout',
-      low: 'Démarre après les autres dans la file'
+      high: 'Démarre en premier, plus de débit que les autres',
+      normal: 'Ordre d’ajout, débit partagé',
+      low: 'Démarre en dernier, cède le débit aux autres'
     };
     (['high', 'normal', 'low'] as Priority[]).forEach((priority, i) => menu.push({
       label: `Priorité ${PRIORITY_LABELS[priority].toLowerCase()}`,

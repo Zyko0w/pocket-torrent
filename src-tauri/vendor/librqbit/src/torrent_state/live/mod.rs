@@ -769,6 +769,19 @@ impl TorrentStateLive {
         }
     }
 
+    /// Pocket Torrent : limite de réception propre à ce torrent (en plus de celle de la session),
+    /// modifiable pendant qu'il tourne, pour répartir la bande passante selon la priorité.
+    /// Le limiteur n'est recréé que si la valeur change.
+    pub fn set_download_limit(&self, bps: Option<NonZeroU32>) {
+        if self.ratelimits.get_download_bps() != bps {
+            self.ratelimits.set_download_bps(bps);
+        }
+    }
+
+    pub fn download_limit(&self) -> Option<NonZeroU32> {
+        self.ratelimits.get_download_bps()
+    }
+
     pub fn per_peer_stats_snapshot(&self, filter: PeerStatsFilter) -> PeerStatsSnapshot {
         PeerStatsSnapshot {
             peers: self

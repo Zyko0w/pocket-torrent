@@ -156,7 +156,7 @@ export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory,
           )}
           <label className='select-inline'>
             <span className='sr-only'>Priorité</span>
-            <select value={priority} title='Ordre de démarrage dans la file d’attente (pas la vitesse)' onChange={(e) => setPriority(e.target.value as Priority)}>
+            <select value={priority} title='Ordre dans la file d’attente, et part du débit quand plusieurs téléchargent en même temps' onChange={(e) => setPriority(e.target.value as Priority)}>
               <option value='high'>Priorité haute</option>
               <option value='normal'>Priorité normale</option>
               <option value='low'>Priorité basse</option>
