@@ -1141,6 +1141,136 @@ mod sandbox_tests {
         assert_eq!(EngineConfig::of(&hardened), EngineConfig::of(&both), "déjà inclus dans le mode renforcé");
     }
 
+    /// Bencode minimal pour forger des .torrent hostiles.
+    enum B<'a> {
+        Int(i64),
+        Str(&'a [u8]),
+        List(Vec<B<'a>>),
+        Dict(Vec<(&'a str, B<'a>)>),
+    }
+
+    fn bencode(value: &B, out: &mut Vec<u8>) {
+        match value {
+            B::Int(i) => out.extend(format!("i{i}e").as_bytes()),
+            B::Str(s) => {
+                out.extend(format!("{}:", s.len()).as_bytes());
+                out.extend(*s);
+            }
+            B::List(items) => {
+                out.push(b'l');
+                items.iter().for_each(|item| bencode(item, out));
+                out.push(b'e');
+            }
+            B::Dict(entries) => {
+                out.push(b'd');
+                let mut sorted: Vec<_> = entries.iter().collect();
+                sorted.sort_by_key(|(k, _)| *k);
+                for (key, item) in sorted {
+                    bencode(&B::Str(key.as_bytes()), out);
+                    bencode(item, out);
+                }
+                out.push(b'e');
+            }
+        }
+    }
+
+    /// .torrent à plusieurs fichiers dont les chemins sont `paths` (composants bruts).
+    fn hostile_torrent(name: &[u8], paths: &[&[&[u8]]]) -> Vec<u8> {
+        let files = paths
+            .iter()
+            .map(|path| {
+                B::Dict(vec![("length", B::Int(10)), ("path", B::List(path.iter().map(|c| B::Str(c)).collect()))])
+            })
+            .collect();
+        let pieces = vec![0u8; 20];
+        let info = B::Dict(vec![
+            ("files", B::List(files)),
+            ("name", B::Str(name)),
+            ("piece length", B::Int(16384)),
+            ("pieces", B::Str(&pieces)),
+        ]);
+        let mut out = Vec::new();
+        bencode(&B::Dict(vec![("info", info)]), &mut out);
+        out
+    }
+
+    /// Tous les fichiers et dossiers sous `root`.
+    fn walk(root: &Path) -> Vec<PathBuf> {
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(root).into_iter().flatten().flatten() {
+            let path = entry.path();
+            found.push(path.clone());
+            if path.is_dir() {
+                found.extend(walk(&path));
+            }
+        }
+        found
+    }
+
+    #[tokio::test]
+    async fn hostile_torrents_cannot_write_outside_the_download_folder() {
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let base = sandbox.root.join("telechargements");
+        let before: Vec<PathBuf> = walk(&sandbox.root);
+
+        // rejetés d'emblée : remontée de dossier, séparateur caché dans un nom
+        for (label, bytes) in [
+            ("remontée ..", hostile_torrent(b"film", &[&[b"..", b"..", b"evil.txt"]])),
+            ("séparateur /", hostile_torrent(b"film", &[&[b"a/../../evil.txt"]])),
+            ("nom de torrent ..", hostile_torrent(b"..", &[&[b"a.txt"], &[b"b.txt"]])),
+            ("séparateur \\", hostile_torrent(b"film", &[&[b"..\\..\\evil.txt"]])),
+        ] {
+            let file = sandbox.root.join(format!("hostile-{}.torrent", label.replace(['/', '\\', '.', ' '], "_")));
+            std::fs::write(&file, &bytes).unwrap();
+            let result = engine.preview(&file.to_string_lossy()).await;
+            assert!(result.is_err(), "{label} : accepté");
+        }
+
+        // acceptés mais neutralisés : lecteur, flux NTFS caché, noms réservés, points finaux,
+        // et nom de torrent qui tente de sortir du dossier
+        let tricky = hostile_torrent(
+            b"film",
+            &[
+                &[b"C:", b"evil.txt"],
+                &[b"D:evil.txt"],
+                &[b"video.mkv:cache.exe"],
+                &[b"CON"],
+                &[b"sub", b"nul.txt"],
+                &[b"COM1.log"],
+                &[b"fin. . "],
+            ],
+        );
+        let file = sandbox.root.join("hostile-tricky.torrent");
+        std::fs::write(&file, &tricky).unwrap();
+        match engine.add(&file.to_string_lossy(), &base, None, false).await {
+            Ok(hash) => {
+                // hors les .torrent piégés écrits par ce test
+                let written: Vec<PathBuf> = walk(&sandbox.root)
+                    .into_iter()
+                    .filter(|p| !before.contains(p))
+                    .filter(|p| !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("hostile-")))
+                    .collect();
+                for path in &written {
+                    assert!(
+                        path.starts_with(&base) || path.starts_with(sandbox.root.join("donnees")) || path == &file,
+                        "écrit hors du dossier de téléchargement : {}",
+                        path.display()
+                    );
+                    let name = path.file_name().unwrap().to_string_lossy();
+                    assert!(!name.contains(':'), "flux NTFS ou lecteur dans {}", path.display());
+                    let stem = name.split('.').next().unwrap().to_uppercase();
+                    assert!(!["CON", "NUL", "COM1"].contains(&stem.as_str()), "nom réservé : {}", path.display());
+                }
+                engine.delete(&hash, true).await.unwrap();
+            }
+            // refuser le torrent entier est aussi une défense valable
+            Err(err) => eprintln!("torrent piégé refusé : {err:#}"),
+        }
+        assert!(!Path::new(r"C:\evil.txt").exists() && !Path::new(r"D:\evil.txt").exists());
+        engine.stop().await;
+    }
+
     #[test]
     fn paths_are_told_apart_from_links() {
         assert!(looks_like_path(r"C:\Users\x\Downloads\Cocorico.torrent"));

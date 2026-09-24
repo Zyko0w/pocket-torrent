@@ -405,7 +405,9 @@ fn validate_share_options(options: &ShareOptions) -> anyhow::Result<()> {
 /// qu'un lien mal interprété ne puisse pas faire effacer un autre fichier.
 pub(super) fn remove_torrent_file(path: &Path) -> anyhow::Result<()> {
     let is_torrent = path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("torrent"));
-    if !is_torrent || !path.is_file() {
+    // « rapport.pdf:x.torrent » désigne un flux caché d'un autre fichier, pas un .torrent
+    let stream = path.file_name().is_some_and(|n| n.to_string_lossy().contains(':'));
+    if !is_torrent || stream || !path.is_file() {
         return Ok(());
     }
     std::fs::remove_file(path).with_context(|| format!("fichier .torrent non supprimé : {}", path.display()))
@@ -424,6 +426,11 @@ mod tests {
 
         super::remove_torrent_file(&other).unwrap();
         assert!(other.exists(), "un fichier qui n'est pas un .torrent n'est jamais effacé");
+        let stream = root.join("document.txt:cache.torrent");
+        if std::fs::write(&stream, b"flux").is_ok() {
+            super::remove_torrent_file(&stream).unwrap();
+            assert!(std::fs::read(&stream).is_ok(), "flux NTFS caché jamais effacé");
+        }
         super::remove_torrent_file(&torrent).unwrap();
         assert!(!torrent.exists());
         // déjà absent : pas d'erreur

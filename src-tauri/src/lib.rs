@@ -64,7 +64,7 @@ pub fn run() {
             perf::mark_start();
             let manager =
                 tauri::async_runtime::block_on(manager::Manager::start(app.handle().clone(), settings_path, data_dir))?;
-            let stream = tauri::async_runtime::block_on(stream::start(manager.clone()))?;
+            let stream = tauri::async_runtime::block_on(stream::start(manager.clone() as Arc<dyn stream::StreamSource>))?;
 
             let args: Vec<String> = std::env::args().collect();
             if let Some(link) = link_argument(&args) {

@@ -49,6 +49,7 @@ tower-http = { version = "0.6", default-features = false, features = ["fs"] }
 # mêmes versions que librqbit (copies corrigées) : résolveur DNS global et trackers HTTPS seuls
 librqbit-dualstack-sockets = "0.7"
 librqbit-tracker-comms = "9.0.1"
+librqbit-core = { version = "9.0.1", default-features = false }
 webpki-root-certs = "1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

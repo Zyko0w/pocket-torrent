@@ -35,6 +35,16 @@ pub fn watch(window: &WebviewWindow) -> tauri::Result<()> {
                 if message != DROP_MESSAGE {
                     return Ok(());
                 }
+                // seulement notre propre page (la CSP interdit déjà tout cadre étranger)
+                let source = {
+                    let mut url = PWSTR::null();
+                    args.Source(&mut url)?;
+                    take_pwstr(url)
+                };
+                if !is_app_origin(&source) {
+                    tracing::warn!("dépôt de fichiers ignoré : message venu de {source}");
+                    return Ok(());
+                }
                 let objects = args.cast::<ICoreWebView2WebMessageReceivedEventArgs2>()?.AdditionalObjects()?;
                 let mut count = 0;
                 objects.Count(&mut count)?;
@@ -61,6 +71,26 @@ pub fn watch(window: &WebviewWindow) -> tauri::Result<()> {
             tracing::warn!("chemins des fichiers déposés indisponibles : {err}");
         }
     })
+}
+
+/// Page de l'application : `http://tauri.localhost` une fois installée, le serveur Vite en mode dev.
+fn is_app_origin(url: &str) -> bool {
+    let Ok(url) = url::Url::parse(url) else { return false };
+    let host = url.host_str();
+    (host == Some("tauri.localhost") && matches!(url.scheme(), "http" | "https"))
+        || (cfg!(debug_assertions) && host == Some("localhost") && url.port() == Some(1420))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_the_app_page_may_send_dropped_files() {
+        assert!(super::is_app_origin("http://tauri.localhost/"));
+        assert!(super::is_app_origin("http://localhost:1420/"), "mode dev (tests compilés en debug)");
+        for url in ["https://evil.example/", "http://tauri.localhost.evil.example/", "http://localhost:8080/", "file:///C:/x.html", ""] {
+            assert!(!super::is_app_origin(url), "{url}");
+        }
+    }
 }
 
 #[cfg(not(windows))]

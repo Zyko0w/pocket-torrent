@@ -309,4 +309,14 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
       )}
     </li>
   )
-})
+}, sameRow)
+
+/**
+ * La liste est relue chaque seconde et chaque téléchargement y arrive comme un nouvel objet :
+ * sans cette comparaison, toutes les lignes seraient redessinées à chaque fois, même les
+ * téléchargements terminés qui ne bougent plus.
+ */
+function sameRow (a: JobRowProps, b: JobRowProps): boolean {
+  return a.categoryName === b.categoryName && a.onDelete === b.onDelete && a.onShare === b.onShare &&
+    a.onChanged === b.onChanged && JSON.stringify(a.job) === JSON.stringify(b.job)
+}

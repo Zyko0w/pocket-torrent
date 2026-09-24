@@ -41,3 +41,16 @@ describe('JobRow', () => {
     expect(screen.getByRole('menuitemradio', { name: /Priorité haute/ }).textContent).toContain('Démarre avant les autres dans la file')
   })
 })
+
+describe('JobRow (rendu)', () => {
+  it('une ligne identique relue n’est pas redessinée, une ligne changée l’est', () => {
+    const job = makeJob({ status: 'done', finishedAt: 1 })
+    const props = { categoryName: null, onDelete: vi.fn(), onShare: vi.fn(), onChanged: vi.fn() }
+    const { rerender } = render(<ToastProvider><ul><JobRow job={job} {...props} /></ul></ToastProvider>)
+    const title = screen.getByText('Film de test 2026.mkv')
+    rerender(<ToastProvider><ul><JobRow job={{ ...job }} {...props} /></ul></ToastProvider>)
+    expect(screen.getByText('Film de test 2026.mkv')).toBe(title)
+    rerender(<ToastProvider><ul><JobRow job={{ ...job, name: 'Autre nom' }} {...props} /></ul></ToastProvider>)
+    expect(screen.getByText('Autre nom')).toBeTruthy()
+  })
+})

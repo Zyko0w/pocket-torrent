@@ -87,21 +87,11 @@ pub fn is_http_url(link: &str) -> bool {
 
 /// Nom de fichier sans caractères interdits par Windows.
 pub fn safe_file_name(name: &str) -> String {
-    let mut cleaned: String =
-        name.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c }).collect();
-    cleaned = cleaned.trim().trim_end_matches(['.', ' ']).to_owned();
-    let stem = cleaned.split('.').next().unwrap_or("").to_lowercase();
-    let reserved = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
-        || ((stem.starts_with("com") || stem.starts_with("lpt"))
-            && stem.len() == 4
-            && stem.as_bytes()[3].is_ascii_digit());
-    if reserved {
-        cleaned.insert(0, '_');
-    }
-    if cleaned.is_empty() {
-        cleaned = "fichier".into();
-    }
-    cleaned.chars().take(180).collect()
+    // mêmes règles que les noms de fichiers des torrents (librqbit-core) : caractères interdits,
+    // lecteur « C: », flux NTFS « a:b », noms réservés de Windows, points et espaces finaux
+    let short: String = name.trim().chars().take(180).collect();
+    let cleaned = librqbit_core::torrent_metainfo::safe_component(&short);
+    if cleaned.trim_matches(['_', ' ', '.']).is_empty() { "fichier".into() } else { cleaned }
 }
 
 /// Chemin libre dans `dir` : « nom (1).ext » si « nom.ext » (ou son .part) existe déjà.
@@ -368,5 +358,28 @@ impl Pace {
         if allowed > elapsed {
             tokio::time::sleep(allowed - elapsed).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod safe_name_tests {
+    use super::safe_file_name;
+
+    #[test]
+    fn hostile_names_stay_plain_file_names() {
+        for (name, expected) in [
+            ("Film 2026.mkv", "Film 2026.mkv"),
+            (r"..\..\Windows\win.ini", ".._.._Windows_win.ini"),
+            ("C:", "C_"),
+            ("rapport.pdf:cache.exe", "rapport.pdf_cache.exe"),
+            ("CON", "_CON"),
+            ("conin$.txt", "_conin$.txt"),
+            ("fin. . ", "fin"),
+            ("..", "fichier"),
+            ("", "fichier"),
+        ] {
+            assert_eq!(safe_file_name(name), expected, "{name:?}");
+        }
+        assert!(safe_file_name(&"a".repeat(500)).chars().count() <= 180);
     }
 }

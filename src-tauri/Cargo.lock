@@ -3822,6 +3822,7 @@ dependencies = [
  "chrono",
  "futures",
  "librqbit",
+ "librqbit-core",
  "librqbit-dualstack-sockets",
  "librqbit-tracker-comms",
  "notify",
