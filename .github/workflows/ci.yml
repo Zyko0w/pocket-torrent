@@ -1,0 +1,91 @@
+# Tests automatiques à chaque envoi et à chaque demande de fusion.
+# À utiliser dans un dépôt PRIVÉ (le code source n'est pas publié ; pocket-torrent-releases
+# ne contient que les installateurs). Aucun secret n'est nécessaire : rien n'est signé ni publié ici.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # .cargo/config.toml pointe vers le CMake des Build Tools installés sur le PC de développement :
+  # sur la machine de GitHub, celui du PATH (une variable déjà définie l'emporte sur [env])
+  CMAKE: cmake
+
+jobs:
+  test:
+    name: Tests et vérifications (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dépendances de l'interface
+        run: npm ci
+
+      - name: Interface — types
+        run: npx tsc -b --noEmit
+
+      - name: Interface — tests (vitest)
+        run: npm test
+
+      - name: Interface — compilation (dist, requis par Tauri)
+        run: npx vite build
+
+      - name: Dépendances de l'interface — failles connues
+        run: npm audit --omit=dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tauri exige ce fichier (ressource de l'installateur) avant de compiler l'application
+      - name: Programme du tunnel (release)
+        working-directory: src-tauri
+        run: cargo build --release -p pocket-torrent-tunnel
+
+      - name: Rust — clippy (avertissements = erreurs)
+        working-directory: src-tauri
+        run: cargo clippy --lib --tests -- -D warnings
+
+      - name: Rust — tests de l'application (dont tests d'intrusion en bac à sable)
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - name: Rust — tests du tunnel (faux service sur un canal nommé de test)
+        working-directory: src-tauri/tunnel
+        run: cargo test --lib
+
+      - name: Rust — tests des trackers
+        working-directory: src-tauri
+        run: cargo test -p librqbit-tracker-comms --lib
+
+      - name: Rust — tests µTP (librqbit-utp vendorisé)
+        working-directory: src-tauri/vendor/librqbit-utp
+        run: cargo test --lib --target-dir ../../target/utp-tests
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Rust — failles connues (RustSec)
+        working-directory: src-tauri
+        run: cargo audit
