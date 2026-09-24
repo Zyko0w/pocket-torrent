@@ -288,7 +288,7 @@ impl Manager {
         self.engine.peers(&Self::torrent_hash(id)?)
     }
 
-    pub fn trackers(&self, id: &str) -> anyhow::Result<Vec<String>> {
+    pub fn trackers(&self, id: &str) -> anyhow::Result<Vec<crate::engine::TrackerView>> {
         self.engine.trackers(&Self::torrent_hash(id)?)
     }
 

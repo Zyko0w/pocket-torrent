@@ -79,6 +79,7 @@ Copiée le 23/09/2026 : la redirection de port échouait toujours sur la Freebox
 | `src/lib.rs`, `src/tracker_comms_http.rs`, `src/tracker_comms_udp.rs` (tests seulement) | Tests `fuzz_tracker_response` et `fuzz_parse_response` | §10.3. |
 | `src/tracker_comms.rs` (`announce_port: Arc<AtomicU16>`) | Port relu à chaque annonce | Le port externe UPnP arrive après le démarrage des torrents. |
 | `src/tracker_comms.rs` | Résolution des trackers UDP par `librqbit_dualstack_sockets::resolve` ; `set_https_trackers_only` | DNS chiffré ; mode discret (les annonces HTTP/UDP sont lisibles en clair). |
+| `src/status.rs` (nouveau), `src/lib.rs`, `src/tracker_comms.rs` (`TrackerComms::status`, annonces HTTP/UDP renvoient aussi le nombre de pairs) | Registre global de l'état de chaque tracker par torrent (`tracker_statuses`) : connexion, succès (pairs reçus), échec (erreur), ignoré (mode discret, type inconnu), prochaine annonce ; entrées retirées quand le flux d'annonces s'arrête | Volet « Trackers » de l'appli : la bibliothèque ne faisait remonter aucun état. Test : `status::tests::entries_follow_their_owner`. |
 
 ## librqbit-dht 9.0.1 (`vendor/librqbit-dht`)
 

@@ -113,6 +113,25 @@ pub struct Preview {
     pub files: Vec<FileView>,
 }
 
+/// Un tracker d'un torrent et l'état de ses annonces.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackerView {
+    pub url: String,
+    /// idle (torrent arrêté : pas d'annonce) | connecting | working | failing | skipped
+    pub state: &'static str,
+    /// Pairs renvoyés par la dernière annonce réussie.
+    pub peers: usize,
+    pub error: Option<String>,
+    /// Dernière annonce réussie et prochaine annonce prévue, en ms depuis 1970.
+    pub last_success_at: Option<u64>,
+    pub next_announce_at: Option<u64>,
+}
+
+fn epoch_ms(time: std::time::SystemTime) -> Option<u64> {
+    time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PeerView {
@@ -640,13 +659,46 @@ impl Engine {
         })
     }
 
-    /// URLs des trackers configurés pour ce torrent, triées. Pas d'état par tracker (pairs,
-    /// erreur, prochaine annonce) : librqbit ne le fait pas encore remonter.
-    pub fn trackers(&self, hash: &str) -> anyhow::Result<Vec<String>> {
+    /// Trackers du torrent (les siens et ceux ajoutés par l'appli) avec l'état de leurs annonces,
+    /// triés. Un torrent arrêté n'annonce rien : ses trackers sont « idle ».
+    pub fn trackers(&self, hash: &str) -> anyhow::Result<Vec<TrackerView>> {
+        use librqbit_tracker_comms::TrackerState;
         let torrent = self.handle(hash)?;
-        let mut trackers: Vec<String> = torrent.shared().trackers.iter().map(|t| t.to_string()).collect();
-        trackers.sort();
-        Ok(trackers)
+        let mut views: Vec<TrackerView> = librqbit_tracker_comms::tracker_statuses(&torrent.info_hash())
+            .into_iter()
+            .map(|status| TrackerView {
+                url: status.url,
+                state: match status.state {
+                    TrackerState::Connecting => "connecting",
+                    TrackerState::Working => "working",
+                    TrackerState::Failing => "failing",
+                    TrackerState::Skipped => "skipped",
+                },
+                peers: status.last_peers,
+                error: status.error,
+                last_success_at: status.last_success.and_then(epoch_ms),
+                next_announce_at: status.next_announce.and_then(epoch_ms),
+            })
+            .collect();
+        let extra = if torrent.with_metadata(|m| m.info.info().private).unwrap_or(false) {
+            Vec::new()
+        } else {
+            EXTRA_TRACKERS.iter().map(|t| (*t).to_owned()).collect()
+        };
+        for url in torrent.shared().trackers.iter().map(|t| t.to_string()).chain(extra) {
+            if !views.iter().any(|v| v.url == url) {
+                views.push(TrackerView {
+                    url,
+                    state: "idle",
+                    peers: 0,
+                    error: None,
+                    last_success_at: None,
+                    next_announce_at: None,
+                });
+            }
+        }
+        views.sort_by(|a, b| a.url.cmp(&b.url));
+        Ok(views)
     }
 
     /// Fichier .torrent d'origine et fichiers choisis, pour l'export de la liste.

@@ -140,6 +140,16 @@ export interface Peer {
   upSpeed: number
 }
 
+export interface Tracker {
+  url: string
+  /** idle : torrent arrêté, pas d'annonce · skipped : jamais contacté (voir `error`) */
+  state: 'idle' | 'connecting' | 'working' | 'failing' | 'skipped'
+  peers: number
+  error: string | null
+  lastSuccessAt: number | null
+  nextAnnounceAt: number | null
+}
+
 export interface Category { id: string; name: string; folder: string }
 
 export interface Settings {
@@ -224,7 +234,7 @@ export const api = {
   moveFilePriority: (id: string, index: number, up: boolean) => invoke<void>('move_file_priority', { id, index, up }),
   recheck: (id: string) => invoke<void>('recheck_job', { id }),
   peers: (id: string) => invoke<Peer[]>('job_peers', { id }),
-  trackers: (id: string) => invoke<string[]>('job_trackers', { id }),
+  trackers: (id: string) => invoke<Tracker[]>('job_trackers', { id }),
   pieceMap: (id: string) => invoke<PieceMap>('job_piece_map', { id }),
   magnet: (id: string) => invoke<string>('job_magnet', { id }),
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),

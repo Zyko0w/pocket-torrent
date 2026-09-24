@@ -45,6 +45,8 @@ pub struct TrackerComms {
     announce_port: std::sync::Arc<std::sync::atomic::AtomicU16>,
     reqwest_client: reqwest::Client,
     key: u32,
+    /// Pocket Torrent : état de chaque tracker, retiré du registre quand ce flux s'arrête.
+    status: crate::status::StatusOwner,
 }
 
 #[derive(Default)]
@@ -172,14 +174,22 @@ impl TrackerComms {
         udp_client: UdpTrackerClient,
     ) -> Option<BoxStream<'static, SocketAddr>> {
         let https_only = HTTPS_ONLY.load(std::sync::atomic::Ordering::Relaxed);
+        let status = crate::status::StatusOwner::new(info_hash);
         let trackers = trackers
             .into_iter()
-            .filter(|t| !https_only || t.scheme() == "https")
+            .filter(|t| {
+                let keep = !https_only || t.scheme() == "https";
+                if !keep {
+                    status.skipped(t.as_str(), "ignoré : mode discret (trackers HTTPS seulement)");
+                }
+                keep
+            })
             .filter_map(|t| match t.scheme() {
                 "http" | "https" => Some(SupportedTracker::Http(t)),
                 "udp" => Some(SupportedTracker::Udp(t)),
                 _ => {
                     debug!("unsupported tracker URL: {}", t);
+                    status.skipped(t.as_str(), "type de tracker non pris en charge");
                     None
                 }
             })
@@ -204,6 +214,7 @@ impl TrackerComms {
                 announce_port,
                 reqwest_client,
                 key: rand::random(),
+                status,
             });
             let mut futures = FuturesUnordered::new();
             for tracker in trackers {
@@ -261,6 +272,7 @@ impl TrackerComms {
     async fn task_single_tracker_monitor_http(&self, tracker_url: Url) -> anyhow::Result<()> {
         trace!(url=%tracker_url, "starting monitor");
         let mut event = Some(tracker_comms_http::TrackerRequestEvent::Started);
+        self.status.connecting(tracker_url.as_str());
 
         loop {
             let interval = (|| self.tracker_one_request_http(&tracker_url, event))
@@ -272,7 +284,10 @@ impl TrackerComms {
                         .with_min_delay(Duration::from_secs(10))
                         .with_max_delay(Duration::from_secs(600)),
                 )
-                .notify(|err, retry_in| debug!(?retry_in, "error calling tracker: {err:#}"))
+                .notify(|err, retry_in| {
+                    debug!(?retry_in, "error calling tracker: {err:#}");
+                    self.status.failure(tracker_url.as_str(), &format!("{err:#}"), Some(retry_in));
+                })
                 .await
                 .context("this shouldn't fail")?;
 
@@ -333,12 +348,18 @@ impl TrackerComms {
             })?
             .0;
 
+        let mut peers = 0;
         for peer in response.iter_peers() {
             self.tx.send(peer).await?;
+            peers += 1;
         }
-        Ok(Duration::from_secs(
-            response.min_interval.unwrap_or(response.interval),
-        ))
+        let interval = Duration::from_secs(response.min_interval.unwrap_or(response.interval));
+        self.status.success(
+            tracker_url.as_str(),
+            peers,
+            self.force_tracker_interval.unwrap_or(interval),
+        );
+        Ok(interval)
     }
 
     async fn task_single_tracker_monitor_udp(
@@ -356,6 +377,7 @@ impl TrackerComms {
 
         let mut sleep_interval: Option<Duration> = None;
         let mut prev_addrs: Option<UdpTrackerResolveResult> = None;
+        self.status.connecting(url.as_str());
         loop {
             if let Some(i) = sleep_interval {
                 trace!(interval=?sleep_interval, "sleeping");
@@ -375,7 +397,10 @@ impl TrackerComms {
                     .with_max_delay(Duration::from_secs(60))
                     .with_jitter(),
             )
-            .notify(|err, retry| debug!(retry_in=?retry, "error resolving tracker: {err:#}"))
+            .notify(|err, retry| {
+                debug!(retry_in=?retry, "error resolving tracker: {err:#}");
+                self.status.failure(url.as_str(), &format!("{err:#}"), Some(retry));
+            })
             .await
             .context("this shouldn't happen: failed resolving tracker addrs")?;
 
@@ -388,9 +413,14 @@ impl TrackerComms {
                         .instrument(trace_span!("udp request", ?addr))
                         .await
                     {
-                        Ok(sleep) => sleep_interval = Some(sleep),
-                        Err(_) => {
-                            sleep_interval = Some(sleep_interval.unwrap_or(Duration::from_secs(60)))
+                        Ok((sleep, peers)) => {
+                            self.status.success(url.as_str(), peers, sleep);
+                            sleep_interval = Some(sleep)
+                        }
+                        Err(err) => {
+                            let retry = sleep_interval.unwrap_or(Duration::from_secs(60));
+                            self.status.failure(url.as_str(), &format!("{err:#}"), Some(retry));
+                            sleep_interval = Some(retry)
                         }
                     }
                 }
@@ -401,12 +431,23 @@ impl TrackerComms {
                         self.tracker_one_request_udp(v6.into(), &client)
                             .instrument(trace_span!("udp request", addr=?v6))
                     );
+                    let peers = r4.as_ref().map_or(0, |r| r.1) + r6.as_ref().map_or(0, |r| r.1);
+                    let error = match (&r4, &r6) {
+                        (Err(e), Err(_)) => Some(format!("{e:#}")),
+                        _ => None,
+                    };
                     sleep_interval = Some(
                         r4.or(r6)
                             .ok()
+                            .map(|r| r.0)
                             .or(sleep_interval)
                             .unwrap_or(Duration::from_secs(60)),
-                    )
+                    );
+                    let next = sleep_interval.unwrap_or(Duration::from_secs(60));
+                    match error {
+                        Some(error) => self.status.failure(url.as_str(), &error, Some(next)),
+                        None => self.status.success(url.as_str(), peers, next),
+                    }
                 }
             }
         }
@@ -416,7 +457,7 @@ impl TrackerComms {
         &self,
         addr: SocketAddr,
         client: &UdpTrackerClient,
-    ) -> anyhow::Result<Duration> {
+    ) -> anyhow::Result<(Duration, usize)> {
         use tracker_comms_udp::*;
 
         let stats = self.stats.get();
@@ -445,12 +486,13 @@ impl TrackerComms {
         match client.announce(addr, request).await {
             Ok(response) => {
                 trace!(len = response.addrs.len(), "received announce response");
+                let peers = response.addrs.len();
                 for addr in response.addrs {
                     self.tx.send(addr).await.context("rx closed")?;
                 }
                 let sleep = response.interval.max(5);
                 let sleep = Duration::from_secs(sleep as u64);
-                Ok(sleep)
+                Ok((sleep, peers))
             }
             Err(e) => {
                 debug!(?addr, "error reading announce response: {e:#}");

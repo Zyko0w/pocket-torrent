@@ -113,7 +113,7 @@ pub async fn job_peers(state: State<'_, AppState>, id: String) -> CommandResult<
 }
 
 #[tauri::command]
-pub async fn job_trackers(state: State<'_, AppState>, id: String) -> CommandResult<Vec<String>> {
+pub async fn job_trackers(state: State<'_, AppState>, id: String) -> CommandResult<Vec<crate::engine::TrackerView>> {
     state.manager.trackers(&id).map_err(message)
 }
 

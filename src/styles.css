@@ -351,6 +351,10 @@ input[type='radio']:checked::after { content: ''; position: absolute; inset: 3.5
 .file-list { list-style: none; max-height: 340px; margin: 12px 0 8px; padding: 0; overflow-y: auto; border-top: 1px solid var(--border); }
 .file-list li { border-bottom: 1px solid var(--line); transition: background var(--duration) var(--ease); }
 .file-list li:hover { background: var(--surface-2); }
+.tracker-row { flex-wrap: nowrap; justify-content: flex-start; padding: 8px 4px; }
+.tracker-main { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.tracker-main small { font-size: 12px; overflow-wrap: anywhere; }
+.tracker-main small b { font-weight: 600; color: var(--text); }
 .file-list .check { display: flex; align-items: center; width: 100%; min-height: 36px; padding: 4px 6px; font-size: 13px; }
 .file-list .check input { margin: 0; }
 .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
