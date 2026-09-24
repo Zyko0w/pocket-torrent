@@ -65,10 +65,16 @@ impl Manager {
         }
         if vpn_changed {
             self.check_vpn().await?;
-        } else if crate::engine::EngineConfig::of(&next) != crate::engine::EngineConfig::of(&current) {
-            // nouveau port, µTP, plafond de pairs, places d'envoi, chiffrement ou liste de blocage : le moteur repart
+        } else if crate::engine::EngineConfig::of(&next) != crate::engine::EngineConfig::of(&current)
+            || (current.vpn.port_forwarding && !next.vpn.port_forwarding && self.forwarding_view().port.is_some())
+        {
+            // nouveau port, µTP, plafond de pairs, places d'envoi, chiffrement, liste de blocage,
+            // ou fin de la redirection de port : le moteur repart
             let _switching = self.vpn_switching.lock().await;
-            self.engine.restart(&next, self.engine.binding(), &self.network()).await?;
+            if !next.vpn.port_forwarding {
+                self.forget_forwarded_port();
+            }
+            self.engine.restart(&self.engine_settings(&next), self.engine.binding(), &self.network()).await?;
             self.respawn_pending();
         }
         self.game.lock().checked = false;

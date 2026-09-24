@@ -236,6 +236,12 @@ pub async fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> 
     state.manager.save_settings(input).await.map_err(message)
 }
 
+/// Redirection de port par le VPN : activée, port obtenu, dernière erreur.
+#[tauri::command]
+pub async fn forwarding_view(state: State<'_, AppState>) -> CommandResult<crate::manager::ForwardingView> {
+    Ok(state.manager.forwarding_view())
+}
+
 /// Premier lancement : faut-il demander si Pocket Torrent doit ouvrir les liens magnet ?
 #[tauri::command]
 pub async fn should_ask_link_handler(state: State<'_, AppState>) -> CommandResult<bool> {

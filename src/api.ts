@@ -174,7 +174,7 @@ export interface Settings {
   magnetPrevious: string | null
   torrentPrevious: string | null
   r2: { accountId: string; bucket: string; publicUrl: string; linkExpiryDays: number; deleteAfterUpload: boolean }
-  vpn: { mode: VpnMode; adapter: string }
+  vpn: { mode: VpnMode; adapter: string; portForwarding: boolean }
   privacy: { encryption: 'off' | 'prefer' | 'require'; hideAnnounces: boolean; hardenedMode: boolean }
   security: { excludedExtensions: string[] }
   blocklist: { enabled: boolean; source: string }
@@ -240,6 +240,8 @@ export const api = {
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),
   share: (id: string, options: ShareOptions) => invoke<string>('share_job', { id, options }),
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
+  /** Redirection de port par le VPN (NAT-PMP) : port obtenu ou dernière erreur. */
+  forwardingView: () => invoke<{ enabled: boolean; port: number | null; error: string | null }>('forwarding_view'),
   /** Premier lancement : proposer d'ouvrir les liens magnet et .torrent avec Pocket Torrent ? */
   shouldAskLinkHandler: () => invoke<boolean>('should_ask_link_handler'),
   /** `false` : mode dev, rien n'est changé dans Windows. */

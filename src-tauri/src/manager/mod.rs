@@ -32,6 +32,7 @@ mod add;
 mod bandwidth;
 mod delivery;
 mod directs;
+mod forwarding;
 mod game;
 mod overview;
 mod power;
@@ -47,6 +48,7 @@ pub use power::PowerView;
 pub use stats::TrafficStats;
 use tick::snapshot_progress;
 pub use transfer::TransferReport;
+pub use forwarding::ForwardingView;
 pub use vpn::{IpCheck, VpnView};
 
 const MB: u64 = 1024 * 1024;
@@ -273,6 +275,8 @@ pub struct Manager {
     searches: Mutex<HashMap<String, Search>>,
     /// Répartition de la bande passante selon la priorité (voir bandwidth.rs).
     bandwidth: Mutex<bandwidth::BandwidthState>,
+    /// Redirection de port obtenue du VPN (voir forwarding.rs).
+    forwarding: Mutex<forwarding::Forwarding>,
     game: Mutex<GameState>,
     processes: Mutex<ProcessWatcher>,
     /// Reconstruit quand le VPN change (adresse source, ou blocage s'il est coupé).
@@ -389,6 +393,7 @@ impl Manager {
             adding: Mutex::new(HashSet::new()),
             searches: Mutex::new(HashMap::new()),
             bandwidth: Mutex::new(Default::default()),
+            forwarding: Mutex::new(Default::default()),
             game: Mutex::new(GameState::default()),
             processes: Mutex::new(ProcessWatcher::new()),
             network: RwLock::new(network),

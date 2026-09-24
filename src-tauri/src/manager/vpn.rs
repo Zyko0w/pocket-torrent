@@ -49,8 +49,10 @@ impl Manager {
 
         tracing::warn!(?current, ?desired, "bascule VPN");
         self.hold_running(Hold::Vpn).await;
+        // autre serveur VPN (ou plus de VPN) : le port redirigé par l'ancien ne vaut plus rien
+        self.forget_forwarded_port();
         let network = network_for(&desired);
-        self.engine.restart(&settings, desired.clone(), &network).await?;
+        self.engine.restart(&self.engine_settings(&settings), desired.clone(), &network).await?;
         *self.network.write() = network;
         self.respawn_pending();
         *self.bound_ip.lock() = desired_ip;

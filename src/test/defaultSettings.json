@@ -91,6 +91,7 @@
   "utpEnabled": false,
   "vpn": {
     "adapter": "",
-    "mode": "off"
+    "mode": "off",
+    "portForwarding": false
   }
 }

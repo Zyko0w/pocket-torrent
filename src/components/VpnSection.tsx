@@ -7,6 +7,7 @@ import { api, errorMessage, type NetworkAdapter, type Settings, type TunnelInfo,
 import { formatSize } from '../format'
 import { useInterval } from '../hooks'
 import { useToast } from './Toast'
+import { Check } from './settings/fields'
 
 interface VpnSectionProps {
   vpn: Settings['vpn']
@@ -57,6 +58,12 @@ export function VpnSection ({ vpn, savedMode, onChange }: VpnSectionProps) {
   useEffect(() => { if (vpn.mode === 'adapter') loadAdapters() }, [vpn.mode, loadAdapters])
   useEffect(() => { if (vpn.mode === 'wireguard') loadTunnel() }, [vpn.mode, loadTunnel])
   useInterval(() => { if (vpn.mode === 'wireguard' && !busy) loadTunnel() }, 3000)
+
+  // redirection de port : état réel (port obtenu, erreur), relu tant que l'option est active
+  const [forwarding, setForwarding] = useState<{ port: number | null; error: string | null } | null>(null)
+  const loadForwarding = useCallback(() => { api.forwardingView().then(setForwarding).catch(() => {}) }, [])
+  useEffect(() => { if (vpn.portForwarding) loadForwarding() }, [vpn.portForwarding, loadForwarding])
+  useInterval(() => { if (vpn.portForwarding && vpn.mode !== 'off') loadForwarding() }, 3000)
 
   const run = async (label: string, action: () => Promise<unknown>, done?: string) => {
     setBusy(label)
@@ -224,6 +231,24 @@ export function VpnSection ({ vpn, savedMode, onChange }: VpnSectionProps) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {vpn.mode !== 'off' && (
+        <div>
+          <Check
+            checked={vpn.portForwarding}
+            onChange={(portForwarding) => onChange({ ...vpn, portForwarding })}
+            label='Redirection de port (ProtonVPN)'
+            help='Demande au serveur VPN un port ouvert vers toi (NAT-PMP) : les autres pairs peuvent se connecter à toi, donc plus de sources et de débit. Nécessite un serveur P2P avec la redirection de port activée chez ProtonVPN (option « NAT-PMP » dans le fichier WireGuard ou l’appli).'
+          />
+          {vpn.portForwarding && forwarding && (
+            <p className={`help${forwarding.error ? ' tone-danger' : ''}`} role='status'>
+              {forwarding.port
+                ? <>Port ouvert par le VPN : <b className='mono'>{forwarding.port}</b> (le moteur écoute dessus){forwarding.error ? ` · dernier renouvellement : ${forwarding.error}` : ''}</>
+                : forwarding.error ?? (savedMode === 'off' ? 'Enregistre pour activer.' : 'Demande en cours auprès du serveur VPN…')}
+            </p>
+          )}
         </div>
       )}
 

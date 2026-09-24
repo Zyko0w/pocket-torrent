@@ -7,6 +7,7 @@ mod engine;
 mod filedrop;
 mod logging;
 mod manager;
+mod natpmp;
 mod netif;
 mod perf;
 mod r2;
@@ -111,6 +112,7 @@ pub fn run() {
             commands::set_job_limit,
             commands::delete_job,
             commands::should_ask_link_handler,
+            commands::forwarding_view,
             commands::answer_link_handler,
             commands::open_project_page,
             commands::clear_finished,

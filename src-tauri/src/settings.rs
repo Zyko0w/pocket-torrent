@@ -140,6 +140,8 @@ pub struct VpnSettings {
     pub mode: VpnMode,
     /// Carte réseau du VPN (mode `Adapter`).
     pub adapter: String,
+    /// Redirection de port demandée au serveur VPN (NAT-PMP, ProtonVPN), voir natpmp.rs.
+    pub port_forwarding: bool,
 }
 
 impl VpnSettings {

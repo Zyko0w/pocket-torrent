@@ -20,6 +20,7 @@ impl Manager {
                 {
                     tracing::error!("bascule VPN impossible : {err:#}");
                 }
+                manager.maintain_forwarding();
                 let views = manager.engine.torrents();
                 manager.sync_torrents(&views);
                 manager.restore_file_priorities(&views);
