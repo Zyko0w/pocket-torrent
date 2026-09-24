@@ -19,6 +19,7 @@ import { NetworkSection, NotificationsSection, WindowsSection } from './settings
 import { AboutPanel } from './AboutPanel'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
 import { StorageToSection } from './settings/StorageToSection'
+import { SpeedChart } from './SpeedChart'
 
 export type SettingsTab = 'general' | 'transfers' | 'network' | 'privacy' | 'cloud' | 'data' | 'diagnostics'
 
@@ -198,6 +199,9 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
     cloud: <StorageToSection {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
     data: (
       <>
+        <Section id='s-speed-chart' title='Débit en direct' intro='Réception et envoi de tous les téléchargements, sur les 5 dernières minutes.'>
+          <SpeedChart />
+        </Section>
         <Section id='s-stats' title='Statistiques' intro='Tout ce qui a été reçu et envoyé (torrents et liens directs), et le ratio global.'>
           <TrafficStatsPanel />
         </Section>

@@ -116,6 +116,7 @@ pub fn run() {
             commands::should_ask_link_handler,
             commands::forwarding_view,
             commands::clipboard_magnet,
+            commands::speed_history,
             commands::answer_link_handler,
             commands::open_project_page,
             commands::clear_finished,

@@ -122,6 +122,12 @@ export interface Preview {
   files: TorrentFile[]
 }
 
+export interface SpeedHistory {
+  /** Octets/s, un point par seconde sur 5 min, du plus ancien au plus récent. */
+  down: number[]
+  up: number[]
+}
+
 export interface PieceMap {
   totalPieces: number
   /** Empaqueté 8 pièces par octet, poids fort en premier ; 1 = pièce présente. */
@@ -230,6 +236,8 @@ export const api = {
   magnet: (id: string) => invoke<string>('job_magnet', { id }),
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
+  /** Débits des 5 dernières minutes d'un téléchargement, ou de l'ensemble (`null`). */
+  speedHistory: (id: string | null) => invoke<SpeedHistory>('speed_history', { id }),
   /** Lien magnet copié ailleurs, à proposer au retour sur la fenêtre (sinon `null`). */
   clipboardMagnet: () => invoke<{ link: string; name: string | null } | null>('clipboard_magnet'),
   /** Redirection de port par le VPN (NAT-PMP) : port obtenu ou dernière erreur. */

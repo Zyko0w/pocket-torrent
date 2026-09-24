@@ -1,6 +1,6 @@
 import { memo, useState, type ReactNode } from 'react'
 import {
-  ArrowClockwise, ArrowDown, Broadcast, CaretDown, CheckCircle, Clock, CloudArrowUp, Copy, FolderOpen, Gauge,
+  ArrowClockwise, ArrowDown, Broadcast, ChartLine, CaretDown, CheckCircle, Clock, CloudArrowUp, Copy, FolderOpen, Gauge,
   GameController, HardDrives, Lightning, LinkSimple, ListChecks, MagnetStraight, MagnifyingGlass, Pause, Play,
   ShareNetwork, ShieldWarning, SpinnerGap, SquaresFour, Trash, Users, WarningCircle, X
 } from '@phosphor-icons/react'
@@ -10,12 +10,13 @@ import { FilesPanel } from './FilesPanel'
 import { LinksPanel } from './LinksPanel'
 import { Menu, type MenuItem } from './Menu'
 import { PeersPanel } from './PeersPanel'
+import { SpeedChart } from './SpeedChart'
 import { ProgressBar, type ProgressTone } from './ProgressBar'
 import { PieceMapPanel } from './PieceMapPanel'
 import { TrackersPanel } from './TrackersPanel'
 import { useToast } from './Toast'
 
-type Detail = 'files' | 'peers' | 'trackers' | 'pieces' | 'links'
+type Detail = 'files' | 'speed' | 'peers' | 'trackers' | 'pieces' | 'links'
 
 interface StatusInfo { label: string; tone: string; icon: ReactNode }
 
@@ -138,6 +139,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
   // volets de détails disponibles pour ce téléchargement, dans l'ordre des onglets
   const details: { id: Detail; label: string; icon: ReactNode }[] = []
   if (isTorrent && job.inEngine) details.push({ id: 'files', label: 'Fichiers', icon: <ListChecks size={14} /> })
+  if ((isTorrent && job.inEngine) || (!isTorrent && !finished)) details.push({ id: 'speed', label: 'Débit', icon: <ChartLine size={14} /> })
   if (canShowPeers) details.push({ id: 'peers', label: 'Pairs', icon: <Users size={14} /> })
   if (isTorrent && job.inEngine) details.push({ id: 'trackers', label: 'Trackers', icon: <Broadcast size={14} /> })
   if (isTorrent && job.inEngine) details.push({ id: 'pieces', label: 'Pièces', icon: <SquaresFour size={14} /> })
@@ -300,6 +302,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
           {shown === 'peers' && <PeersPanel jobId={job.id} />}
           {shown === 'trackers' && <TrackersPanel jobId={job.id} />}
           {shown === 'pieces' && <PieceMapPanel jobId={job.id} />}
+          {shown === 'speed' && <div className='panel'><SpeedChart jobId={job.id} /></div>}
           {shown === 'links' && job.delivery && <LinksPanel delivery={job.delivery} />}
         </div>
       )}

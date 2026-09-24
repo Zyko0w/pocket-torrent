@@ -19,6 +19,7 @@ import { UpdateBanner } from './components/UpdateBanner'
 import { LinkHandlerPrompt } from './components/LinkHandlerPrompt'
 import { ClipboardPrompt } from './components/ClipboardPrompt'
 import { DropZone } from './components/DropZone'
+import { SpeedChart } from './components/SpeedChart'
 import { ShutdownBanner, ShutdownToggle } from './components/PowerControls'
 
 /** Page affichée : la liste (en cours ou terminés) ou les réglages. */
@@ -119,6 +120,7 @@ function Sidebar ({ view, onView, overview, counts, category, onCategory, onOpen
             <span className='eyebrow'><ArrowUp size={11} /> Envoi</span>
             <b>{formatSpeed(overview?.upSpeed ?? 0)}</b>
           </div>
+        <SpeedChart compact />
         </div>
         {vpnInfo && (
           <button type='button' className='status-row' title={vpnInfo.title} onClick={onOpenVpn}>

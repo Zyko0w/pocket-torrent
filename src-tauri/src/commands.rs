@@ -227,6 +227,12 @@ pub async fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> 
     state.manager.save_settings(input).await.map_err(message)
 }
 
+/// Débits des 5 dernières minutes, d'un téléchargement ou de l'ensemble (`id` absent).
+#[tauri::command]
+pub async fn speed_history(state: State<'_, AppState>, id: Option<String>) -> CommandResult<crate::manager::SpeedHistory> {
+    Ok(state.manager.speed_history(id.as_deref()))
+}
+
 /// Au retour sur la fenêtre : lien magnet copié ailleurs à proposer (jamais le reste du presse-papiers).
 #[tauri::command]
 pub async fn clipboard_magnet(state: State<'_, AppState>) -> CommandResult<Option<crate::manager::ClipboardMagnet>> {
