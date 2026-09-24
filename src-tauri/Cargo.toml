@@ -55,6 +55,9 @@ tauri-plugin-process = "2"
 base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
+# chemin réel des fichiers déposés (voir filedrop.rs) : mêmes versions que Tauri/wry
+webview2-com = "0.38"
+windows-core = "0.61"
 pocket-torrent-tunnel = { path = "tunnel" }
 winreg = "0.56"
 windows-sys = { version = "0.61", features = [

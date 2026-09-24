@@ -2,6 +2,7 @@
 // Tout arrive dans la zone d'ajout : l'utilisateur garde la main (catégorie, priorité, fichiers).
 import { useEffect, useRef, useState } from 'react'
 import { FileArrowDown } from '@phosphor-icons/react'
+import { listen } from '@tauri-apps/api/event'
 import { api, errorMessage } from '../api'
 import { useToast } from './Toast'
 
@@ -11,6 +12,30 @@ const LINK = /^(magnet:\?|https?:\/\/)/i
 function droppedLinks (data: DataTransfer): string[] {
   const text = data.getData('text/uri-list') || data.getData('text/plain')
   return text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && LINK.test(l))
+}
+
+interface WebView2Bridge { postMessageWithAdditionalObjects?: (message: string, objects: ArrayLike<File>) => void }
+
+/**
+ * Chemin réel de chaque fichier déposé (chaîne vide si inconnu : fichier tiré d'une archive, hors
+ * de WebView2…). La page ne voit que le contenu ; WebView2 transmet les fichiers au Rust
+ * (`filedrop.rs`), qui renvoie leurs chemins.
+ */
+async function realPaths (files: File[]): Promise<string[]> {
+  const bridge = (window as unknown as { chrome?: { webview?: WebView2Bridge } }).chrome?.webview
+  if (!files.length || !bridge?.postMessageWithAdditionalObjects) return files.map(() => '')
+  let stop: (() => void) | undefined
+  const paths = await new Promise<string[]>((resolve) => {
+    const timer = window.setTimeout(() => resolve([]), 1500)
+    listen<string[]>('files-dropped', (event) => { window.clearTimeout(timer); resolve(event.payload) })
+      .then((unlisten) => {
+        stop = unlisten
+        bridge.postMessageWithAdditionalObjects!('pocket-torrent:files-dropped', files)
+      })
+      .catch(() => resolve([]))
+  })
+  stop?.()
+  return files.map((_, i) => paths[i] ?? '')
 }
 
 export function DropZone ({ onDropped }: { onDropped: (items: string[]) => void }) {
@@ -49,7 +74,14 @@ export function DropZone ({ onDropped }: { onDropped: (items: string[]) => void 
       const files = Array.from(data.files)
       const torrents = files.filter((f) => f.name.toLowerCase().endsWith('.torrent'))
       if (files.length > torrents.length) toast('Seuls les fichiers .torrent peuvent être déposés.')
-      for (const file of torrents) {
+      const paths = await realPaths(torrents)
+      for (const [i, file] of torrents.entries()) {
+        // le vrai fichier : c'est lui que « supprimer le .torrent d'origine » effacera
+        if (paths[i].toLowerCase().endsWith('.torrent')) {
+          items.push(paths[i])
+          continue
+        }
+        // chemin inconnu : copie rangée par l'appli
         try {
           items.push(await api.dropTorrentFile(file.name, new Uint8Array(await file.arrayBuffer())))
         } catch (err) {

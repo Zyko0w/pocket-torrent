@@ -4,6 +4,7 @@ mod danger;
 mod direct;
 mod dns;
 mod engine;
+mod filedrop;
 mod hooks;
 mod logging;
 mod manager;
@@ -75,6 +76,9 @@ pub fn run() {
             // arrêt de Windows (ou « éteindre à la fin ») : même arrêt propre que « Quitter »
             // (état sauvegardé, redirections de ports retirées de la box)
             if let Some(window) = app.get_webview_window("main") {
+                if let Err(err) = filedrop::watch(&window) {
+                    tracing::warn!("dépôt de fichiers non suivi : {err:#}");
+                }
                 let hwnd = window.hwnd()?.0;
                 let on_end = Box::new(move || manager.shutdown_blocking(std::time::Duration::from_secs(4)));
                 if let Err(err) = system::on_session_end(hwnd, on_end) {
