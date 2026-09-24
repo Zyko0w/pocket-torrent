@@ -96,11 +96,11 @@ impl Manager {
 
     /// Réponse à la question du premier lancement. En mode dev, rien n'est enregistré ni écrit
     /// dans Windows : les liens pointeraient vers l'exe de test, et la version installée ne
-    /// poserait plus jamais la question (mêmes réglages).
-    pub fn answer_link_handler(&self, enable: bool) -> anyhow::Result<()> {
+    /// poserait plus jamais la question (mêmes réglages). Renvoie `false` dans ce cas.
+    pub fn answer_link_handler(&self, enable: bool) -> anyhow::Result<bool> {
         if cfg!(debug_assertions) {
             tracing::info!("mode dev : réponse « liens magnet » ({enable}) ni enregistrée ni appliquée");
-            return Ok(());
+            return Ok(false);
         }
         let mut next = self.settings();
         if enable && !system::link_handler_enabled() {
@@ -112,6 +112,6 @@ impl Manager {
         next.link_handler_asked = true;
         next.save(&self.settings_path)?;
         *self.settings.write() = next;
-        Ok(())
+        Ok(true)
     }
 }

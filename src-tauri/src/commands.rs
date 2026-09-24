@@ -243,7 +243,8 @@ pub async fn should_ask_link_handler(state: State<'_, AppState>) -> CommandResul
 }
 
 #[tauri::command]
-pub async fn answer_link_handler(state: State<'_, AppState>, enable: bool) -> CommandResult<()> {
+/// `false` : mode dev, réponse ignorée (voir `Manager::answer_link_handler`).
+pub async fn answer_link_handler(state: State<'_, AppState>, enable: bool) -> CommandResult<bool> {
     state.manager.answer_link_handler(enable).map_err(message)
 }
 

@@ -240,7 +240,8 @@ export const api = {
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
   /** Premier lancement : proposer d'ouvrir les liens magnet et .torrent avec Pocket Torrent ? */
   shouldAskLinkHandler: () => invoke<boolean>('should_ask_link_handler'),
-  answerLinkHandler: (enable: boolean) => invoke<void>('answer_link_handler', { enable }),
+  /** `false` : mode dev, rien n'est changé dans Windows. */
+  answerLinkHandler: (enable: boolean) => invoke<boolean>('answer_link_handler', { enable }),
   /** Page GitHub du projet (versions publiées), dans le navigateur. */
   openProjectPage: () => invoke<void>('open_project_page'),
   setGameMode: (mode: GameModeSwitch) => invoke<void>('set_game_mode', { mode }),

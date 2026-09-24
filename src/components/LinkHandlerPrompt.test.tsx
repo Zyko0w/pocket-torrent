@@ -8,7 +8,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
 const mocked = vi.mocked(invoke)
 
 function answerWith (ask: boolean) {
-  mocked.mockImplementation(async (cmd: string) => (cmd === 'should_ask_link_handler' ? ask : null))
+  mocked.mockImplementation(async (cmd: string) => (cmd === 'should_ask_link_handler' ? ask : true))
 }
 
 const renderPrompt = () => render(<ToastProvider><LinkHandlerPrompt /></ToastProvider>)
@@ -35,5 +35,12 @@ describe('LinkHandlerPrompt', () => {
     renderPrompt()
     await waitFor(() => expect(mocked).toHaveBeenCalledWith('should_ask_link_handler'))
     expect(screen.queryByRole('button', { name: 'Non merci' })).toBeNull()
+  })
+
+  it('mode dev : prévient que rien n’a été changé', async () => {
+    mocked.mockImplementation(async (cmd: string) => cmd === 'should_ask_link_handler')
+    renderPrompt()
+    fireEvent.click(await screen.findByRole('button', { name: /Oui, utiliser Pocket Torrent/ }))
+    expect(await screen.findByRole('status')).toHaveProperty('textContent', expect.stringMatching(/Mode dev : réponse ignorée/))
   })
 })

@@ -20,8 +20,10 @@ export function LinkHandlerPrompt () {
   const answer = async (enable: boolean) => {
     setBusy(true)
     try {
-      await api.answerLinkHandler(enable)
-      toast(enable ? 'Les liens magnet s’ouvriront dans Pocket Torrent' : 'Tu pourras changer d’avis dans Réglages › Général')
+      const applied = await api.answerLinkHandler(enable)
+      toast(!applied
+        ? 'Mode dev : réponse ignorée, rien n’est changé dans Windows'
+        : enable ? 'Les liens magnet s’ouvriront dans Pocket Torrent' : 'Tu pourras changer d’avis dans Réglages › Général')
       setOpen(false)
     } catch (err) {
       toast(errorMessage(err))
