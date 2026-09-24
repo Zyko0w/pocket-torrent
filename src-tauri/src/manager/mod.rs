@@ -17,9 +17,9 @@ use tauri_plugin_notification::NotificationExt;
 use crate::danger;
 use crate::direct::{self, Download, DownloadError, Progress};
 use crate::engine::{Binding, Engine, EngineState, FileView, PeerView, Preview, TorrentView};
-use crate::storage_to::StorageTo;
 use crate::secrets::{self, Secret};
 use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};
+use crate::storage_to::StorageTo;
 use crate::store::{
     Common, Delivery, DeliveryState, Dest, DirectEntry, Hold, Link, PendingTorrent, Priority, StoreData, TorrentEntry,
     now_ms,
@@ -32,6 +32,7 @@ mod add;
 mod bandwidth;
 mod delivery;
 mod directs;
+mod feeds;
 mod forwarding;
 mod game;
 mod history;
@@ -44,14 +45,15 @@ mod tick;
 mod transfer;
 mod vpn;
 
+pub use add::ClipboardMagnet;
+pub use feeds::{FeedPreviewItem, FeedStatus};
+pub use forwarding::ForwardingView;
+pub use history::SpeedHistory;
 pub use overview::format_bytes;
 pub use power::PowerView;
 pub use stats::TrafficStats;
 use tick::snapshot_progress;
 pub use transfer::TransferReport;
-pub use add::ClipboardMagnet;
-pub use forwarding::ForwardingView;
-pub use history::SpeedHistory;
 pub use vpn::{IpCheck, VpnView};
 
 const MB: u64 = 1024 * 1024;
@@ -269,6 +271,8 @@ pub struct Manager {
     tasks: Mutex<HashMap<String, JoinHandle<()>>>,
     /// Torrents en cours d'ajout au moteur (à ne pas confondre avec des torrents disparus).
     adding: Mutex<HashSet<String>>,
+    /// Flux RSS : mémoire des éléments vus et état de chaque flux (voir feeds.rs).
+    feeds: Mutex<feeds::Feeds>,
     /// Débits des 5 dernières minutes (graphique), voir history.rs.
     history: Mutex<history::History>,
     /// Empreinte du dernier magnet du presse-papiers déjà proposé (proposé une seule fois).
@@ -389,6 +393,7 @@ impl Manager {
             searches: Mutex::new(HashMap::new()),
             clipboard_offered: Mutex::new(None),
             history: Mutex::new(Default::default()),
+            feeds: Mutex::new(Default::default()),
             bandwidth: Mutex::new(Default::default()),
             forwarding: Mutex::new(Default::default()),
             game: Mutex::new(GameState::default()),

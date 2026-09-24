@@ -119,7 +119,8 @@ impl StorageTo {
     }
 
     fn request(&self, client: &reqwest::Client, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        let mut request = client.request(method, format!("{}{path}", self.base)).header("X-Visitor-Token", &self.visitor_token);
+        let mut request =
+            client.request(method, format!("{}{path}", self.base)).header("X-Visitor-Token", &self.visitor_token);
         if let Some(token) = &self.account_token {
             request = request.bearer_auth(token);
         }
@@ -137,10 +138,13 @@ impl StorageTo {
 
     /// Vérifie l'accès et renvoie une phrase sur le quota restant (bouton « Tester »).
     pub async fn check(&self, client: &reqwest::Client) -> anyhow::Result<String> {
-        let quota: Quota = api_json(self.request(client, reqwest::Method::GET, "/bandwidth/status"), "état du quota").await?;
+        let quota: Quota =
+            api_json(self.request(client, reqwest::Method::GET, "/bandwidth/status"), "état du quota").await?;
         Ok(match (quota.authenticated, quota.remaining_gb, quota.plan) {
             (true, _, plan) => format!("Compte storage.to relié ({}).", plan.unwrap_or_else(|| "gratuit".into())),
-            (false, Some(gb), _) => format!("storage.to joignable : {gb:.1} Go d'envoi restants sur 24 h (sans compte)."),
+            (false, Some(gb), _) => {
+                format!("storage.to joignable : {gb:.1} Go d'envoi restants sur 24 h (sans compte).")
+            }
             (false, None, _) => "storage.to joignable (sans compte).".into(),
         })
     }
@@ -152,8 +156,12 @@ impl StorageTo {
             .json(&json!({ "expected_file_count": file_count }));
         let created: CollectionCreated = api_json(request, "création de la collection").await?;
         let collection = created.collection;
-        let shared =
-            Shared { id: collection.id, url: collection.url, owner_token: created.owner_token, expires_at: collection.expires_at };
+        let shared = Shared {
+            id: collection.id,
+            url: collection.url,
+            owner_token: created.owner_token,
+            expires_at: collection.expires_at,
+        };
         self.set_expiry(client, "collection", &shared).await?;
         Ok(shared)
     }
@@ -167,7 +175,8 @@ impl StorageTo {
         collection: Option<&Shared>,
         mut on_progress: impl FnMut(u64),
     ) -> anyhow::Result<Shared> {
-        let size = tokio::fs::metadata(path).await.with_context(|| format!("fichier introuvable : {}", path.display()))?.len();
+        let size =
+            tokio::fs::metadata(path).await.with_context(|| format!("fichier introuvable : {}", path.display()))?.len();
         if size == 0 {
             bail!("fichier vide : rien à envoyer");
         }
@@ -194,14 +203,16 @@ impl StorageTo {
             other => bail!("réponse inattendue de storage.to (envoi « {other} »)"),
         }
 
-        let mut body = json!({ "filename": file_name, "size": size, "content_type": content_type, "r2_key": init.r2_key });
+        let mut body =
+            json!({ "filename": file_name, "size": size, "content_type": content_type, "r2_key": init.r2_key });
         if let Some(collection) = collection {
             body["collection_id"] = json!(collection.id);
         }
         let request = self.request(client, reqwest::Method::POST, "/upload/confirm").json(&body);
         let confirmed: Confirmed = api_json(request, "fin de l'envoi").await?;
         let file = confirmed.file;
-        let shared = Shared { id: file.id, url: file.url, owner_token: confirmed.owner_token, expires_at: file.expires_at };
+        let shared =
+            Shared { id: file.id, url: file.url, owner_token: confirmed.owner_token, expires_at: file.expires_at };
         self.set_expiry(client, "file", &shared).await?;
         Ok(shared)
     }
@@ -279,14 +290,23 @@ impl StorageTo {
             return Ok(());
         }
         let request = self
-            .owned(self.request(client, reqwest::Method::POST, &format!("/{kind}/{}/expiry", shared.id)), &shared.owner_token)
+            .owned(
+                self.request(client, reqwest::Method::POST, &format!("/{kind}/{}/expiry", shared.id)),
+                &shared.owner_token,
+            )
             .json(&json!({ "days": self.expiry_days }));
         api_json::<serde_json::Value>(request, "durée de vie du lien").await?;
         Ok(())
     }
 
     /// Supprime un fichier ou une collection (`kind` : « file » ou « collection »). Déjà absent : succès.
-    pub async fn delete(&self, client: &reqwest::Client, kind: &str, id: &str, owner_token: &str) -> anyhow::Result<()> {
+    pub async fn delete(
+        &self,
+        client: &reqwest::Client,
+        kind: &str,
+        id: &str,
+        owner_token: &str,
+    ) -> anyhow::Result<()> {
         if !valid_id(id) || !matches!(kind, "file" | "collection") {
             bail!("identifiant storage.to invalide");
         }
@@ -352,7 +372,10 @@ async fn check_status(response: reqwest::Response, step: &str) -> anyhow::Result
         403 => " — ce fichier n'appartient pas à ce PC",
         _ => "",
     };
-    bail!("storage.to a refusé l'étape « {step} » (HTTP {status}{}){hint}", reason.map(|r| format!(" : {r}")).unwrap_or_default())
+    bail!(
+        "storage.to a refusé l'étape « {step} » (HTTP {status}{}){hint}",
+        reason.map(|r| format!(" : {r}")).unwrap_or_default()
+    )
 }
 
 async fn api_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder, step: &str) -> anyhow::Result<T> {
@@ -360,7 +383,11 @@ async fn api_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuild
     response.json::<T>().await.with_context(|| format!("réponse de storage.to illisible ({step})"))
 }
 
-async fn put_with_retry(client: &reqwest::Client, url: &reqwest::Url, body: bytes::Bytes) -> anyhow::Result<reqwest::Response> {
+async fn put_with_retry(
+    client: &reqwest::Client,
+    url: &reqwest::Url,
+    body: bytes::Bytes,
+) -> anyhow::Result<reqwest::Response> {
     let mut attempt = 0;
     loop {
         attempt += 1;
@@ -515,7 +542,8 @@ mod tests {
         let client = StorageTo::for_tests(&base);
         let (path, data) = sandbox_file(4096);
         let mut progress = 0;
-        let shared = client.upload(&reqwest::Client::new(), &path, "Film de test.mkv", None, |p| progress = p).await.unwrap();
+        let shared =
+            client.upload(&reqwest::Client::new(), &path, "Film de test.mkv", None, |p| progress = p).await.unwrap();
         assert_eq!(shared.url, "https://storage.to/FQxyz1234");
         assert_eq!(shared.owner_token, "owner_file");
         assert_eq!(progress, 4096);

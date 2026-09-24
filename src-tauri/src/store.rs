@@ -8,6 +8,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+/// Écrit un fichier sans jamais laisser de version à moitié écrite : fichier temporaire mis sur
+/// le disque, puis renommé. Une coupure de courant (arrêt du PC programmé compris) laisse
+/// l'ancienne version ou la nouvelle, jamais un fichier vide.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut tmp_name = path.as_os_str().to_owned();
+    tmp_name.push(".tmp");
+    let tmp = PathBuf::from(tmp_name);
+    {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(tmp, path)?;
+    Ok(())
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
@@ -230,20 +250,7 @@ impl StoreData {
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let tmp = path.with_extension("json.tmp");
-        {
-            use std::io::Write;
-            let mut file = std::fs::File::create(&tmp)?;
-            file.write_all(&serde_json::to_vec(self)?)?;
-            // sur le disque avant le renommage : une coupure de courant (arrêt du PC programmé
-            // compris) ne laisse jamais un jobs.json vide
-            file.sync_all()?;
-        }
-        std::fs::rename(tmp, path)?;
-        Ok(())
+        write_atomic(path, &serde_json::to_vec(self)?)
     }
 
     pub fn direct_mut(&mut self, id: &str) -> Option<&mut DirectEntry> {

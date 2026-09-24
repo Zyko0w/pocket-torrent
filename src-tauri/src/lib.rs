@@ -10,10 +10,11 @@ mod manager;
 mod natpmp;
 mod netif;
 mod perf;
+mod rss;
 mod secrets;
 mod settings;
-mod store;
 mod storage_to;
+mod store;
 mod stream;
 mod system;
 mod tray;
@@ -65,7 +66,8 @@ pub fn run() {
             perf::mark_start();
             let manager =
                 tauri::async_runtime::block_on(manager::Manager::start(app.handle().clone(), settings_path, data_dir))?;
-            let stream = tauri::async_runtime::block_on(stream::start(manager.clone() as Arc<dyn stream::StreamSource>))?;
+            let stream =
+                tauri::async_runtime::block_on(stream::start(manager.clone() as Arc<dyn stream::StreamSource>))?;
 
             let args: Vec<String> = std::env::args().collect();
             if let Some(link) = link_argument(&args) {
@@ -117,6 +119,9 @@ pub fn run() {
             commands::forwarding_view,
             commands::clipboard_magnet,
             commands::speed_history,
+            commands::rss_status,
+            commands::rss_check_now,
+            commands::rss_preview,
             commands::answer_link_handler,
             commands::open_project_page,
             commands::clear_finished,

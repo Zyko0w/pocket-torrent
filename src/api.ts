@@ -122,6 +122,16 @@ export interface Preview {
   files: TorrentFile[]
 }
 
+export interface FeedStatus {
+  id: string
+  /** Dernière vérification (ms), `null` si jamais vérifié. */
+  checkedAt: number | null
+  error: string | null
+  added: number
+  lastAdded: string[]
+  ready: boolean
+}
+
 export interface SpeedHistory {
   /** Octets/s, un point par seconde sur 5 min, du plus ancien au plus récent. */
   down: number[]
@@ -179,6 +189,10 @@ export interface Settings {
   magnetPrevious: string | null
   torrentPrevious: string | null
   storageTo: { expiryDays: number; deleteAfterUpload: boolean }
+  rss: {
+    intervalMinutes: number
+    feeds: { id: string; name: string; url: string; include: string; exclude: string; category: string | null; enabled: boolean; skipRepeats: boolean }[]
+  }
   vpn: { mode: VpnMode; adapter: string; portForwarding: boolean }
   privacy: { encryption: 'off' | 'prefer' | 'require'; hideAnnounces: boolean; hardenedMode: boolean }
   security: { excludedExtensions: string[] }
@@ -236,6 +250,11 @@ export const api = {
   magnet: (id: string) => invoke<string>('job_magnet', { id }),
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
+  rssStatus: () => invoke<FeedStatus[]>('rss_status'),
+  rssCheckNow: () => invoke<FeedStatus[]>('rss_check_now'),
+  /** Éléments d'un flux et ceux qui passent les filtres, sans rien ajouter. */
+  rssPreview: (url: string, include: string, exclude: string) =>
+    invoke<{ title: string; matched: boolean }[]>('rss_preview', { url, include, exclude }),
   /** Débits des 5 dernières minutes d'un téléchargement, ou de l'ensemble (`null`). */
   speedHistory: (id: string | null) => invoke<SpeedHistory>('speed_history', { id }),
   /** Lien magnet copié ailleurs, à proposer au retour sur la fenêtre (sinon `null`). */

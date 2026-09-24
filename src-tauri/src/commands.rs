@@ -227,9 +227,36 @@ pub async fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> 
     state.manager.save_settings(input).await.map_err(message)
 }
 
+/// Flux RSS : état de chaque flux (dernière vérification, erreur, éléments ajoutés).
+#[tauri::command]
+pub async fn rss_status(state: State<'_, AppState>) -> CommandResult<Vec<crate::manager::FeedStatus>> {
+    Ok(state.manager.feed_status())
+}
+
+/// Flux RSS : vérification immédiate de tous les flux actifs.
+#[tauri::command]
+pub async fn rss_check_now(state: State<'_, AppState>) -> CommandResult<Vec<crate::manager::FeedStatus>> {
+    state.manager.check_feeds_now().await;
+    Ok(state.manager.feed_status())
+}
+
+/// Flux RSS : éléments d'un flux et ceux qui passent les filtres, sans rien ajouter.
+#[tauri::command]
+pub async fn rss_preview(
+    state: State<'_, AppState>,
+    url: String,
+    include: String,
+    exclude: String,
+) -> CommandResult<Vec<crate::manager::FeedPreviewItem>> {
+    state.manager.preview_feed(&url, &include, &exclude).await.map_err(message)
+}
+
 /// Débits des 5 dernières minutes, d'un téléchargement ou de l'ensemble (`id` absent).
 #[tauri::command]
-pub async fn speed_history(state: State<'_, AppState>, id: Option<String>) -> CommandResult<crate::manager::SpeedHistory> {
+pub async fn speed_history(
+    state: State<'_, AppState>,
+    id: Option<String>,
+) -> CommandResult<crate::manager::SpeedHistory> {
     Ok(state.manager.speed_history(id.as_deref()))
 }
 

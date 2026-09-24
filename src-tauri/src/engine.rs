@@ -14,9 +14,9 @@ use librqbit::api::TorrentIdOrHash;
 use librqbit::dht::DhtPersistenceConfig;
 use librqbit::limits::LimitsConfig;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, DhtSessionConfig,
-    ListenerMode, ListenerOptions, ManagedTorrent, Session, SessionOptions, SessionPersistenceConfig,
-    TorrentStatsState, generate_azereus_style,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, DhtSessionConfig, ListenerMode,
+    ListenerOptions, ManagedTorrent, Session, SessionOptions, SessionPersistenceConfig, TorrentStatsState,
+    generate_azereus_style,
 };
 use parking_lot::{Mutex, RwLock};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -221,7 +221,9 @@ fn explain_add_error(err: anyhow::Error, binding: &Binding) -> anyhow::Error {
     let text = format!("{err:#}");
     if text.contains("no known way to resolve peers") {
         return match binding {
-            Binding::Offline => anyhow!("VPN coupé : impossible de chercher ce magnet tant que le VPN n'est pas revenu."),
+            Binding::Offline => {
+                anyhow!("VPN coupé : impossible de chercher ce magnet tant que le VPN n'est pas revenu.")
+            }
             _ => anyhow!(
                 "Impossible de chercher ce magnet : la DHT est coupée (mode discret ou confidentialité renforcée, \
                  Réglages › Confidentialité) et le lien ne contient aucun tracker HTTPS. Désactive ce mode ou \
@@ -1023,8 +1025,11 @@ mod sandbox_tests {
         let content = sandbox.root.join("contenu source").join("Film de test 2026.mkv");
         std::fs::create_dir_all(content.parent().unwrap()).unwrap();
         std::fs::write(&content, vec![7u8; 300_000]).unwrap();
-        let (created, handle) =
-            engine.session().create_and_serve_torrent(&content, Default::default()).await.expect("création du .torrent");
+        let (created, handle) = engine
+            .session()
+            .create_and_serve_torrent(&content, Default::default())
+            .await
+            .expect("création du .torrent");
         // on ne garde que le fichier .torrent : le torrent créé est retiré du moteur
         engine.delete(&handle.info_hash().as_string(), false).await.unwrap();
         let target = sandbox.root.join("Mes torrents").join("Cocorico 2 TRUEFRENCH 4K (1).torrent");

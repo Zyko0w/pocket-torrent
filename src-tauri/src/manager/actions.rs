@@ -161,7 +161,8 @@ impl Manager {
         let id = match JobKey::parse(id)? {
             JobKey::Direct(id) => id,
             JobKey::Torrent(hash) => {
-                self.data.lock().torrents.get_mut(&hash).context("Téléchargement introuvable.")?.limit_kbps = limit_kbps;
+                self.data.lock().torrents.get_mut(&hash).context("Téléchargement introuvable.")?.limit_kbps =
+                    limit_kbps;
                 // appliquée tout de suite ; la répartition par priorité en tient compte ensuite
                 let cap = (limit_kbps > 0).then(|| u64::from(limit_kbps) * 1024);
                 self.engine.set_torrent_download_limit(&hash, cap);
@@ -190,14 +191,17 @@ impl Manager {
         let key = JobKey::parse(id)?;
         let source = match &key {
             JobKey::Torrent(hash) => self.data.lock().torrents.get(hash).and_then(|e| e.source_file.clone()),
-            JobKey::Pending(id) => self.data.lock().pending.iter().find(|p| &p.id == id).map(|p| PathBuf::from(&p.link)),
+            JobKey::Pending(id) => {
+                self.data.lock().pending.iter().find(|p| &p.id == id).map(|p| PathBuf::from(&p.link))
+            }
             JobKey::Direct(_) => None,
         };
         if let Some(task) = self.tasks.lock().remove(&format!("upload:{}", key.id())) {
             task.abort();
         }
         if delete_online {
-            let links = self.with_common(&key, |c| c.delivery.as_ref().map(|d| d.links.clone())).flatten().unwrap_or_default();
+            let links =
+                self.with_common(&key, |c| c.delivery.as_ref().map(|d| d.links.clone())).flatten().unwrap_or_default();
             if !links.is_empty() {
                 let storage = StorageTo::from_settings(&self.settings().storage_to)?;
                 let http = self.http();
@@ -365,7 +369,6 @@ impl Manager {
         let path = path.filter(|p| p.exists()).context("Dossier introuvable sur le disque.")?;
         system::reveal(&path)
     }
-
 }
 
 /// Efface un fichier .torrent d'origine : jamais autre chose qu'un fichier « .torrent », pour

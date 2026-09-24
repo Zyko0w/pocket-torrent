@@ -116,7 +116,9 @@ impl Manager {
             .lock()
             .torrents
             .iter()
-            .map(|(hash, e)| (hash.clone(), (e.common.priority, (e.limit_kbps > 0).then(|| u64::from(e.limit_kbps) * 1024))))
+            .map(|(hash, e)| {
+                (hash.clone(), (e.common.priority, (e.limit_kbps > 0).then(|| u64::from(e.limit_kbps) * 1024)))
+            })
             .collect();
         let downloading: Vec<(&TorrentView, Priority, Option<u64>)> = views
             .iter()

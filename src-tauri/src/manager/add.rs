@@ -271,9 +271,7 @@ fn magnet_name(link: &str) -> Option<String> {
 /// tracker HTTPS ou un pair indiqué directement (`x.pe`).
 pub(super) fn magnet_has_discreet_source(link: &str) -> bool {
     let Ok(url) = url::Url::parse(link) else { return false };
-    url.query_pairs().any(|(key, value)| {
-        (key == "tr" && value.to_lowercase().starts_with("https://")) || key == "x.pe"
-    })
+    url.query_pairs().any(|(key, value)| (key == "tr" && value.to_lowercase().starts_with("https://")) || key == "x.pe")
 }
 
 /// Lien magnet trouvé dans le presse-papiers, proposé à l'ajout.
@@ -328,7 +326,12 @@ mod tests {
         // empreinte en base32 (autre forme courante)
         assert!(super::magnet_in_text("MAGNET:?xt=urn:btih:5CAS3DLLG52O3GUFK5OG6QKJVU4Z7SGS").is_some());
         // pas un magnet, magnet invalide, texte énorme, magnet noyé dans un message
-        for text in ["mot de passe : hunter22", "magnet:?xt=urn:btih:zz", "", "salut regarde magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a"] {
+        for text in [
+            "mot de passe : hunter22",
+            "magnet:?xt=urn:btih:zz",
+            "",
+            "salut regarde magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a",
+        ] {
             assert!(super::magnet_in_text(text).is_none(), "{text}");
         }
         assert!(super::magnet_in_text(&format!("{hex}&tr={}", "a".repeat(9000))).is_none());

@@ -41,6 +41,10 @@
     "maxActive": 3,
     "slowThresholdKbps": 10
   },
+  "rss": {
+    "feeds": [],
+    "intervalMinutes": 15
+  },
   "scanDownloads": false,
   "schedule": {
     "days": [

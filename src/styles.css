@@ -552,3 +552,14 @@ dialog::backdrop { background: rgba(3, 3, 6, 0.75); }
 .speed-spark { grid-column: 1 / -1; height: 42px; padding: 4px 0; background: var(--surface); }
 .speed-spark svg { display: block; }
 .speed-spark .chart-line { stroke-width: 1.5; opacity: 0.9; }
+
+/* flux RSS */
+.feed-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.feed-card { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.feed-head { display: flex; align-items: center; gap: 12px; }
+.feed-head .input { flex: 1; font-weight: 600; }
+.feed-enabled { gap: 10px; }
+.feed-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.feed-preview { display: grid; gap: 6px; }
+.feed-preview ul { display: grid; gap: 3px; max-height: 220px; margin: 0; padding: 0; overflow-y: auto; list-style: none; font-size: 12.5px; }
+.feed-preview li { display: flex; align-items: center; gap: 6px; }

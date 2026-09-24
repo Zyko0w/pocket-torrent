@@ -218,7 +218,13 @@ mod tests {
             owner_token: "owner_v1_secret".into(),
         };
         let common = Common {
-            delivery: Some(Delivery { state: DeliveryState::Done, sent_bytes: 10, total_bytes: 10, links: vec![link], expires_at: None }),
+            delivery: Some(Delivery {
+                state: DeliveryState::Done,
+                sent_bytes: 10,
+                total_bytes: 10,
+                links: vec![link],
+                expires_at: None,
+            }),
             ..Default::default()
         };
         let json = serde_json::to_string(&base_job("t:x".into(), "torrent", &common)).unwrap();

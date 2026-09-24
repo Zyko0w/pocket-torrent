@@ -2,7 +2,7 @@
 // thème (chaque section vit dans `settings/`). Un thème à la fois, choisi dans la colonne de gauche.
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
-  ChartBar, Cloud, FolderSimple, Gauge, ShieldCheck, SpinnerGap, Stethoscope, WarningCircle,
+  ChartBar, Cloud, Rss, FolderSimple, Gauge, ShieldCheck, SpinnerGap, Stethoscope, WarningCircle,
   WifiHigh
 } from '@phosphor-icons/react'
 import { api, errorMessage, type SecretsInput, type Settings, type SettingsView as View } from '../api'
@@ -19,13 +19,15 @@ import { NetworkSection, NotificationsSection, WindowsSection } from './settings
 import { AboutPanel } from './AboutPanel'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
 import { StorageToSection } from './settings/StorageToSection'
+import { RssSection } from './settings/RssSection'
 import { SpeedChart } from './SpeedChart'
 
-export type SettingsTab = 'general' | 'transfers' | 'network' | 'privacy' | 'cloud' | 'data' | 'diagnostics'
+export type SettingsTab = 'general' | 'transfers' | 'rss' | 'network' | 'privacy' | 'cloud' | 'data' | 'diagnostics'
 
 export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode; advanced?: boolean }[] = [
   { id: 'general', label: 'Général', icon: <FolderSimple size={16} /> },
   { id: 'transfers', label: 'Vitesse et file', icon: <Gauge size={16} /> },
+  { id: 'rss', label: 'Flux RSS', icon: <Rss size={16} /> },
   { id: 'network', label: 'VPN et réseau', icon: <WifiHigh size={16} /> },
   { id: 'privacy', label: 'Confidentialité', icon: <ShieldCheck size={16} /> },
   { id: 'cloud', label: 'Envoi en ligne', icon: <Cloud size={16} /> },
@@ -178,6 +180,7 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
         <GameSection {...section} processes={draft.processes} onProcessesChange={(processes) => edit({ processes })} />
       </>
     ),
+    rss: <RssSection {...section} />,
     network: (
       <>
         <Section id='s-vpn' title='VPN' intro='Cacher ton adresse IP pendant les téléchargements, avec arrêt automatique si le VPN se coupe.'>

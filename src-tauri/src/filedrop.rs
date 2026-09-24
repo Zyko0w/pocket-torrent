@@ -87,7 +87,13 @@ mod tests {
     fn only_the_app_page_may_send_dropped_files() {
         assert!(super::is_app_origin("http://tauri.localhost/"));
         assert!(super::is_app_origin("http://localhost:1420/"), "mode dev (tests compilés en debug)");
-        for url in ["https://evil.example/", "http://tauri.localhost.evil.example/", "http://localhost:8080/", "file:///C:/x.html", ""] {
+        for url in [
+            "https://evil.example/",
+            "http://tauri.localhost.evil.example/",
+            "http://localhost:8080/",
+            "file:///C:/x.html",
+            "",
+        ] {
             assert!(!super::is_app_origin(url), "{url}");
         }
     }

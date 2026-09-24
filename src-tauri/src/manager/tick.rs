@@ -27,6 +27,7 @@ impl Manager {
                 manager.sync_directs();
                 manager.record_traffic();
                 manager.record_speeds(&views);
+                manager.maintain_feeds();
                 manager.check_shutdown_when_done();
                 manager.update_sleep_prevention(&views);
                 if round % 5 == 1 {

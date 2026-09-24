@@ -53,6 +53,7 @@ pub struct Settings {
     /// Ancien programme associé aux fichiers .torrent, remis en place si on désactive le nôtre.
     pub torrent_previous: Option<String>,
     pub storage_to: StorageToSettings,
+    pub rss: RssSettings,
     pub vpn: VpnSettings,
     pub privacy: PrivacySettings,
     pub security: SecuritySettings,
@@ -304,6 +305,38 @@ impl Default for NotificationSettings {
     }
 }
 
+/// Flux RSS de séries (voir rss.rs et manager/feeds.rs).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RssSettings {
+    /// Intervalle entre deux vérifications, en minutes (5 à 1440).
+    pub interval_minutes: u32,
+    pub feeds: Vec<RssFeed>,
+}
+
+impl Default for RssSettings {
+    fn default() -> Self {
+        Self { interval_minutes: 15, feeds: Vec::new() }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RssFeed {
+    /// Identifiant stable (mémoire des éléments déjà vus), tiré à l'ajout.
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    /// Mots que le titre doit tous contenir (séparés par des espaces ou des virgules).
+    pub include: String,
+    /// Mots dont aucun ne doit figurer dans le titre.
+    pub exclude: String,
+    pub category: Option<String>,
+    pub enabled: bool,
+    /// Ne pas reprendre un épisode déjà ajouté (S02E05) dans une autre qualité.
+    pub skip_repeats: bool,
+}
+
 /// Envoi des fichiers terminés sur storage.to (voir storage_to.rs).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -346,6 +379,7 @@ impl Default for Settings {
             magnet_previous: None,
             torrent_previous: None,
             storage_to: StorageToSettings::default(),
+            rss: RssSettings::default(),
             vpn: VpnSettings::default(),
             privacy: PrivacySettings::default(),
             security: SecuritySettings::default(),
@@ -468,6 +502,43 @@ impl Settings {
             return Err("Places d'envoi par torrent : 500 maximum (0 = tous les pairs).".into());
         }
 
+        if !(5..=1440).contains(&self.rss.interval_minutes) {
+            return Err("Flux RSS : intervalle entre 5 minutes et 24 heures.".into());
+        }
+        if self.rss.feeds.len() > 30 {
+            return Err("Flux RSS : 30 flux au maximum.".into());
+        }
+        let mut ids = HashSet::new();
+        for (i, feed) in self.rss.feeds.iter_mut().enumerate() {
+            let n = i + 1;
+            feed.url = feed.url.trim().to_owned();
+            feed.name = feed.name.trim().chars().take(80).collect();
+            feed.include = feed.include.trim().to_owned();
+            feed.exclude = feed.exclude.trim().to_owned();
+            let url = url::Url::parse(&feed.url).map_err(|_| format!("Flux RSS {n} : adresse invalide."))?;
+            if !matches!(url.scheme(), "http" | "https") || feed.url.len() > 2000 {
+                return Err(format!("Flux RSS {n} : l'adresse doit commencer par http:// ou https://."));
+            }
+            if feed.name.is_empty() {
+                feed.name = url.host_str().unwrap_or("Flux").to_owned();
+            }
+            if feed.include.chars().count() > 300 || feed.exclude.chars().count() > 300 {
+                return Err(format!("Flux RSS « {} » : filtres de 300 caractères au plus.", feed.name));
+            }
+            if feed.id.is_empty() {
+                feed.id = uuid::Uuid::new_v4().simple().to_string()[..12].to_owned();
+            }
+            if !feed.id.chars().all(|c| c.is_ascii_alphanumeric()) || feed.id.len() > 40 || !ids.insert(feed.id.clone())
+            {
+                return Err(format!("Flux RSS « {} » : identifiant invalide.", feed.name));
+            }
+        }
+        let categories: Vec<String> = self.categories.iter().map(|c| c.id.clone()).collect();
+        for feed in &mut self.rss.feeds {
+            if feed.category.as_ref().is_some_and(|id| !categories.contains(id)) {
+                feed.category = None;
+            }
+        }
 
         if !(1..=7).contains(&self.storage_to.expiry_days) {
             return Err("storage.to : durée des liens entre 1 et 7 jours.".into());
@@ -539,7 +610,6 @@ pub fn slug(text: &str) -> String {
     let out: String = out.trim_matches('-').chars().take(40).collect();
     if out.is_empty() { "categorie".into() } else { out }
 }
-
 
 #[cfg(test)]
 mod fixture_tests {
