@@ -100,6 +100,12 @@ Copiée le 23/09/2026 : la redirection de port échouait toujours sur la Freebox
 | `Cargo.toml` | dépendance `windows-sys` (Windows) | Appels réseau Win32. |
 | `src/resolve.rs` (nouveau), `src/lib.rs` | Résolveur de noms remplaçable (`set_resolver`, `lookup_host`) | Les trackers UDP et la DHT résolvent par le DNS chiffré de l'application. |
 
+## librqbit-utp 0.7.0 (`vendor/librqbit-utp`)
+
+| Fichier | Changement | Pourquoi |
+| --- | --- | --- |
+| `Cargo.toml` | `ringbuf` 0.4.7 → 0.5.2 (aucun changement de code : l'API utilisée est la même) | RUSTSEC-2026-0293 (double libération dans `Consumer::skip`/`clear` si la destruction d'un élément panique). Non exploitable ici (tampons d'octets), mais 0.7.0 est la dernière version publiée. Tests : `cd vendor/librqbit-utp` puis `cargo test --lib --target-dir ../../target/utp-tests` (76 réussis). |
+
 ## WireGuard-NT 1.1 (`vendor/wireguard-nt`)
 
 Pilote officiel (download.wireguard.com, signé WireGuard LLC), seulement la dll amd64. Empreinte SHA-256 vérifiée par `tunnel/src/service.rs` avant installation.

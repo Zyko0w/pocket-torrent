@@ -89,6 +89,7 @@ librqbit-core = { path = "vendor/librqbit-core" }
 librqbit-bencode = { path = "vendor/librqbit-bencode" }
 librqbit-peer-protocol = { path = "vendor/librqbit-peer-protocol" }
 librqbit-upnp = { path = "vendor/librqbit-upnp" }
+librqbit-utp = { path = "vendor/librqbit-utp" }
 
 [profile.release]
 codegen-units = 1
