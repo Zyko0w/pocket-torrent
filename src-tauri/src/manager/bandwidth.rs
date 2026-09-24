@@ -97,6 +97,13 @@ pub(super) struct BandwidthState {
 impl Manager {
     /// Recalcule chaque seconde les limites de réception par torrent (voir en tête du module).
     pub(super) fn balance_bandwidth(&self, views: &[TorrentView]) {
+        // cas courant (au plus un torrent qui télécharge, aucune limite posée) : rien à calculer,
+        // juste suivre le débit de la connexion
+        let live = views.iter().filter(|v| v.state == EngineState::Live && !v.finished);
+        if live.clone().count() < 2 && self.bandwidth.lock().caps.is_empty() {
+            self.bandwidth.lock().capacity.update(live.map(|v| v.down_speed).sum());
+            return;
+        }
         let priorities: HashMap<String, Priority> =
             self.data.lock().torrents.iter().map(|(hash, e)| (hash.clone(), e.common.priority)).collect();
         let downloading: Vec<(&TorrentView, Priority)> = views

@@ -74,8 +74,7 @@ impl Manager {
             if !next.vpn.port_forwarding {
                 self.forget_forwarded_port();
             }
-            self.engine.restart(&self.engine_settings(&next), self.engine.binding(), &self.network()).await?;
-            self.respawn_pending();
+            self.restart_engine(&next, self.engine.binding(), &self.network()).await?;
         }
         self.game.lock().checked = false;
         self.apply_limits();

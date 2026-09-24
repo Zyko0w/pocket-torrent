@@ -33,3 +33,33 @@ src-tauri/tunnel) et `npm test`.
 - Ligne de téléchargement redessinée seulement si ses données changent (la liste est relue chaque seconde).
 - Serveur de streaming découplé du gestionnaire (`StreamSource`) : testable sans lancer l'appli.
 - Nettoyage des noms de fichiers unifié (voir plus haut).
+
+---
+
+# Audit complémentaire — 24/09/2026 (après les ajouts du jour)
+
+Portée : répartition de la bande passante, dépendances, CI, valeurs par défaut et mode avancé,
+redirection de port NAT-PMP, question des liens magnet au premier lancement.
+
+## Corrigé
+
+| Gravité | Problème | Correctif | Test |
+| --- | --- | --- | --- |
+| Moyenne | Redémarrage du moteur : l'ancien était arrêté avant que le nouveau démarre ; un port déjà pris laissait les torrents sans moteur. Déclenchable par un serveur VPN hostile (port imposé par NAT-PMP). | Repli automatique sur un port libre ; la redirection est abandonnée si le port donné par le VPN est pris. | — (nécessiterait un vrai port réseau hors bac à sable) |
+| Moyenne | NAT-PMP : un serveur VPN hostile pouvait imposer un port système (445, 80…). | Ports < 1024 refusés. | `natpmp::tests::responses_are_checked_strictly` |
+| Vérifié | NAT-PMP : fausse réponse envoyée par un autre programme. | Socket reliée à la passerelle : le système écarte tout autre expéditeur. | `answers_from_anyone_but_the_gateway_are_ignored` — **contre-test** : protection retirée, le test échoue (fausse réponse acceptée) ; protection remise, il passe. |
+| Faible | CI : actions GitHub référencées par un tag déplaçable. | Figées sur un commit précis, jeton du dépôt non conservé (`persist-credentials: false`), droits en lecture seule. | — |
+| Dépendances | quick-xml 0.38 (RUSTSEC-2026-0194/0195), ringbuf 0.4 (RUSTSEC-2026-0293). | plist 1.10 (quick-xml 0.42) ; librqbit-utp vendorisé avec ringbuf 0.5.2 (76 tests µTP réussis). `cargo audit` et `npm audit` : 0 vulnérabilité. | — |
+
+## Vérifié, sans défaut
+
+- Répartition de la bande passante : pas de division par zéro (poids ≥ 1), calculs sur 128 bits, plancher de 16 Kio/s par torrent, limite bornée à `u32::MAX`.
+- Question des liens magnet : en mode dev, rien n'est écrit dans le registre (les liens pointeraient vers l'exe de test).
+- Mode avancé : simple préférence d'affichage (stockage local), les réglages masqués restent appliqués.
+- Tests d'intrusion précédents (streaming, torrents piégés, faux service du tunnel, noms de fichiers) : toujours réussis.
+
+## Optimisation et refactoring
+
+- Répartition de la bande passante : sortie immédiate quand au plus un torrent télécharge (cas courant), sans reconstruire la table des priorités chaque seconde.
+- Redémarrage du moteur, relance des recherches et des limites : une seule fonction (`restart_engine`) au lieu de trois copies.
+- Réglages d'origine : fournis par Rust (`Settings::default`), avec un test qui garde le jeu d'essai de l'interface synchronisé.

@@ -60,6 +60,11 @@ pub fn decode_response(protocol: Protocol, packet: &[u8]) -> anyhow::Result<Mapp
     if public_port == 0 {
         bail!("le serveur VPN n'a attribué aucun port");
     }
+    // ports système (partage de fichiers, web…) : jamais attribués par un vrai serveur VPN, et
+    // le moteur devrait y écouter à la place d'un service de Windows
+    if public_port < 1024 {
+        bail!("port {public_port} refusé : réservé au système");
+    }
     Ok(Mapping { public_port, lifetime_secs: u32::from_be_bytes([packet[12], packet[13], packet[14], packet[15]]) })
 }
 
@@ -76,6 +81,12 @@ pub fn gateway_for(vpn_ip: IpAddr) -> Option<SocketAddr> {
 /// prévoit la RFC, et seules les réponses venues de la passerelle sont lues.
 pub async fn request(local_ip: IpAddr, gateway: SocketAddr, protocol: Protocol) -> anyhow::Result<Mapping> {
     let socket = tokio::net::UdpSocket::bind((local_ip, 0)).await.context("envoi NAT-PMP impossible depuis le VPN")?;
+    exchange(&socket, gateway, protocol).await
+}
+
+/// Échange sur `socket`, relié (`connect`) à la passerelle : le système n'y laisse entrer que
+/// les réponses venues d'elle, une fausse réponse envoyée par un autre programme est écartée.
+async fn exchange(socket: &tokio::net::UdpSocket, gateway: SocketAddr, protocol: Protocol) -> anyhow::Result<Mapping> {
     socket.connect(gateway).await.context("passerelle NAT-PMP injoignable")?;
     let packet = encode_request(protocol, 0, 1, LIFETIME_SECS);
     let mut wait = Duration::from_millis(250);
@@ -124,6 +135,30 @@ mod tests {
         let refused = decode_response(Protocol::Udp, &response(129, 2, 0)).unwrap_err();
         assert!(format!("{refused}").contains("refusée"));
         assert!(decode_response(Protocol::Udp, &response(129, 0, 0)).is_err());
+        // serveur VPN hostile : ports système refusés (445 = partage de fichiers Windows)
+        for port in [1, 80, 445, 1023] {
+            assert!(decode_response(Protocol::Udp, &response(129, 0, port)).is_err(), "{port}");
+        }
+        assert!(decode_response(Protocol::Udp, &response(129, 0, 1024)).is_ok());
+    }
+
+    #[tokio::test]
+    async fn answers_from_anyone_but_the_gateway_are_ignored() {
+        // la vraie passerelle se tait ; un autre programme connaît le port du client et lui
+        // envoie une fausse réponse (port 3389, bureau à distance) pendant toute l'attente
+        let gateway = fake_gateway(None).await;
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let client_addr = socket.local_addr().unwrap();
+        let attacker = tokio::spawn(async move {
+            let attacker = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            for _ in 0..80 {
+                let _ = attacker.send_to(&response(129, 0, 3389), client_addr).await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+        let err = exchange(&socket, gateway, Protocol::Udp).await.unwrap_err();
+        attacker.abort();
+        assert!(format!("{err}").contains("ne répond pas"), "fausse réponse acceptée : {err}");
     }
 
     #[test]

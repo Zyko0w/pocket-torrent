@@ -106,10 +106,12 @@ impl Manager {
         }
         tracing::info!(port, "redirection de port obtenue du VPN");
         self.forwarding.lock().port = Some(port);
-        let settings = self.engine_settings(&self.settings());
-        self.engine.restart(&settings, self.engine.binding(), &self.network()).await?;
-        self.respawn_pending();
-        self.apply_limits();
+        self.restart_engine(&self.settings(), self.engine.binding(), &self.network()).await?;
+        // port pris sur ce PC : le moteur a dû en choisir un autre, la redirection ne sert à rien
+        if self.engine.listen_port() != Some(port) {
+            self.forwarding.lock().port = None;
+            bail!("le port {port} donné par le VPN est déjà utilisé sur ce PC");
+        }
         Ok(())
     }
 }

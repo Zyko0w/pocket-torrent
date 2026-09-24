@@ -447,7 +447,17 @@ impl Engine {
     pub async fn restart(&self, settings: &Settings, binding: Binding, network: &Network) -> anyhow::Result<()> {
         self.session().stop().await;
         // les vitesses limites courantes (mode jeu compris) sont réappliquées par l'appelant
-        let session = create_session(settings, &self.data_dir, &binding, network).await?;
+        let session = match create_session(settings, &self.data_dir, &binding, network).await {
+            Ok(session) => session,
+            // port déjà pris (autre programme, port imposé par le VPN…) : l'ancien moteur est déjà
+            // arrêté, on repart sur un port libre plutôt que de laisser les torrents sans moteur
+            Err(err) if settings.torrent_port != 0 => {
+                tracing::warn!("port {} indisponible ({err:#}) : port libre choisi à la place", settings.torrent_port);
+                let fallback = Settings { torrent_port: 0, ..settings.clone() };
+                create_session(&fallback, &self.data_dir, &binding, network).await?
+            }
+            Err(err) => return Err(err),
+        };
         *self.session.write() = session;
         *self.binding.write() = binding;
         self.peer_samples.lock().clear();
