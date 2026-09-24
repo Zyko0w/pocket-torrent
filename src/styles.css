@@ -392,6 +392,8 @@ input[type='radio']:checked::after { content: ''; position: absolute; inset: 3.5
 .menu-item.separated::before { content: ''; position: absolute; left: 6px; right: 6px; top: -3px; height: 1px; background: var(--border); }
 .menu-icon { display: inline-grid; place-items: center; width: 16px; color: var(--text-muted); transition: color var(--duration) var(--ease); }
 .menu-check { margin-left: auto; color: var(--accent-text); font-size: 9px; }
+.menu-label { display: grid; gap: 1px; padding: 6px 0; line-height: 1.3; }
+.menu-label small { color: var(--text-muted); font-size: 11.5px; }
 
 /* ------------------------------------------------------------ réglages */
 .settings-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }

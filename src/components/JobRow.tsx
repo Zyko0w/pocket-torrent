@@ -168,8 +168,15 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
     menu.push({ label: 'Démarrer maintenant', icon: <Lightning size={16} />, onSelect: () => run(() => api.startNow(job.id)) })
   }
   if (!finished) {
+    // la priorité règle l'ordre de la file d'attente (voir queue.rs), pas la vitesse
+    const hints: Record<Priority, string> = {
+      high: 'Démarre avant les autres dans la file',
+      normal: 'Ordre d’ajout',
+      low: 'Démarre après les autres dans la file'
+    };
     (['high', 'normal', 'low'] as Priority[]).forEach((priority, i) => menu.push({
       label: `Priorité ${PRIORITY_LABELS[priority].toLowerCase()}`,
+      hint: hints[priority],
       checked: job.priority === priority,
       separated: i === 0 && menu.length > 0,
       onSelect: () => run(() => api.setPriority(job.id, priority))

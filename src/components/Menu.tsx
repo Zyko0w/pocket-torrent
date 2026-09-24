@@ -4,6 +4,8 @@ import { DotsThree } from '@phosphor-icons/react'
 
 export interface MenuItem {
   label: string
+  /** Précision affichée en petit sous le libellé. */
+  hint?: string
   icon?: ReactNode
   onSelect: () => void
   checked?: boolean
@@ -151,7 +153,9 @@ export function Menu ({ label, items, up = false, start = false, trigger, trigge
               onClick={() => { close(true); item.onSelect() }}
             >
               <span className='menu-icon' aria-hidden='true'>{item.icon}</span>
-              {item.label}
+              {item.hint
+                ? <span className='menu-label'>{item.label}<small>{item.hint}</small></span>
+                : item.label}
               {item.checked && <span className='menu-check' aria-hidden='true'>●</span>}
             </button>
           ))}
