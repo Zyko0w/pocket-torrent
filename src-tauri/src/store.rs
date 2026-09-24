@@ -151,6 +151,8 @@ pub struct TorrentEntry {
     /// garde que tant que le torrent tourne : réappliqué après une pause ou un redémarrage.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_priorities: Option<Vec<usize>>,
+    /// Vitesse de réception maximale choisie pour ce torrent, en Ko/s (0 = aucune limite propre).
+    pub limit_kbps: u32,
     /// Fichier .torrent local d'où vient ce torrent (absent pour un magnet ou un lien http),
     /// proposé à la suppression avec le téléchargement.
     #[serde(skip_serializing_if = "Option::is_none")]

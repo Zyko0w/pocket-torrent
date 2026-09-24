@@ -109,6 +109,7 @@ fn torrent_job(hash: &str, entry: &TorrentEntry, view: Option<&TorrentView>) -> 
     job.wanted_bytes = entry.wanted_bytes;
     job.file_count = entry.file_count;
     job.selected_files = entry.selected_files;
+    job.limit_kbps = entry.limit_kbps;
     job.source_file = entry.source_file.as_deref().filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
 
     let Some(view) = view else {

@@ -54,3 +54,20 @@ describe('JobRow (rendu)', () => {
     expect(screen.getByText('Autre nom')).toBeTruthy()
   })
 })
+
+describe('JobRow (limite de vitesse)', () => {
+  it('un torrent en cours se limite comme un lien direct', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    renderRow(makeJob({ limitKbps: 0 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Limiter la vitesse/ }))
+    fireEvent.change(screen.getByLabelText(/Vitesse max en réception/), { target: { value: '500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('set_job_limit', { id: makeJob().id, limitKbps: 500 }))
+  })
+
+  it('la limite choisie s’affiche sur la ligne', () => {
+    renderRow(makeJob({ limitKbps: 500 }))
+    expect(screen.getByText(/max 500 Ko\/s/)).toBeTruthy()
+  })
+})

@@ -181,7 +181,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
       onSelect: () => run(() => api.setPriority(job.id, priority))
     }))
   }
-  if (!isTorrent && !['done', 'error'].includes(job.status)) {
+  if (!isPending && !['done', 'error', 'seeding'].includes(job.status)) {
     menu.push({ label: 'Limiter la vitesse…', icon: <Gauge size={16} />, separated: true, onSelect: () => { setLimit(String(job.limitKbps)); setLimitOpen(true) } })
   }
   if (isTorrent && !isPending) {
@@ -278,7 +278,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
             run(() => api.setLimit(job.id, kbps), kbps ? `Limité à ${formatSpeed(kbps * 1024)}` : 'Limite retirée').then(() => setLimitOpen(false))
           }}
         >
-          <label className='label' htmlFor={`limit-${job.id}`} style={{ margin: 0 }}>Vitesse max <span className='optional'>(Ko/s, 0 = illimitée)</span></label>
+          <label className='label' htmlFor={`limit-${job.id}`} style={{ margin: 0 }}>Vitesse max en réception <span className='optional'>(Ko/s, 0 = illimitée)</span></label>
           <div className='input-row'>
             <input id={`limit-${job.id}`} className='input input-narrow' type='number' min={0} step={100} value={limit} onChange={(e) => setLimit(e.target.value)} />
             <button type='submit' className='btn btn-primary btn-sm' disabled={busy}>Appliquer</button>

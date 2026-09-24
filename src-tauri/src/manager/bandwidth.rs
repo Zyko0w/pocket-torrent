@@ -6,6 +6,9 @@
 //! mesuré au fil de l'eau. Rien n'est gaspillé : la part qu'un torrent n'utilise pas (peu de
 //! pairs) revient aux autres (partage max-min pondéré). Sans torrent concurrent de priorité
 //! différente, aucune limite par torrent n'est posée.
+//!
+//! Une limite choisie à la main pour un torrent (menu « Limiter la vitesse ») s'applique toujours :
+//! le torrent ne la dépasse jamais, et ce qu'elle laisse libre revient aux autres.
 
 use super::*;
 
@@ -28,16 +31,20 @@ pub(super) struct Flow {
     pub weight: u64,
     pub speed: u64,
     pub previous_cap: Option<u64>,
+    /// Limite choisie à la main pour ce torrent, en octets/s.
+    pub limit: Option<u64>,
 }
 
 impl Flow {
     /// Ce que le torrent demande : sans limite atteinte, son débit avec une marge pour grandir ;
     /// s'il plafonne à sa limite, on ne sait pas jusqu'où il irait (demande illimitée).
     fn demand(&self) -> u64 {
-        match self.previous_cap {
+        let estimated = match self.previous_cap {
             Some(cap) if self.speed >= cap.saturating_mul(9) / 10 => u64::MAX,
             _ => self.speed.saturating_mul(5) / 4 + FLOOR_BPS,
-        }
+        };
+        // jamais plus que sa limite : le reste de sa part revient aux autres
+        self.limit.map_or(estimated, |limit| estimated.min(limit))
     }
 }
 
@@ -64,7 +71,13 @@ pub(super) fn allocate(capacity: u64, flows: &[Flow]) -> Vec<u64> {
         }
         open.retain(|i| !satisfied.contains(i));
     }
-    caps.into_iter().map(|cap| cap.max(FLOOR_BPS)).collect()
+    caps.into_iter()
+        .zip(flows)
+        .map(|(cap, flow)| {
+            let cap = cap.max(FLOOR_BPS);
+            flow.limit.map_or(cap, |limit| cap.min(limit))
+        })
+        .collect()
 }
 
 /// Estimation de la capacité de la connexion, sans limite globale : pic de débit récent qui
@@ -97,54 +110,60 @@ pub(super) struct BandwidthState {
 impl Manager {
     /// Recalcule chaque seconde les limites de réception par torrent (voir en tête du module).
     pub(super) fn balance_bandwidth(&self, views: &[TorrentView]) {
-        // cas courant (au plus un torrent qui télécharge, aucune limite posée) : rien à calculer,
-        // juste suivre le débit de la connexion
-        let live = views.iter().filter(|v| v.state == EngineState::Live && !v.finished);
-        if live.clone().count() < 2 && self.bandwidth.lock().caps.is_empty() {
-            self.bandwidth.lock().capacity.update(live.map(|v| v.down_speed).sum());
-            return;
-        }
-        let priorities: HashMap<String, Priority> =
-            self.data.lock().torrents.iter().map(|(hash, e)| (hash.clone(), e.common.priority)).collect();
-        let downloading: Vec<(&TorrentView, Priority)> = views
+        // priorité et limite choisie à la main (octets/s) de chaque torrent
+        let wanted: HashMap<String, (Priority, Option<u64>)> = self
+            .data
+            .lock()
+            .torrents
+            .iter()
+            .map(|(hash, e)| (hash.clone(), (e.common.priority, (e.limit_kbps > 0).then(|| u64::from(e.limit_kbps) * 1024))))
+            .collect();
+        let downloading: Vec<(&TorrentView, Priority, Option<u64>)> = views
             .iter()
             .filter(|v| v.state == EngineState::Live && !v.finished)
-            .filter_map(|v| Some((v, *priorities.get(&v.info_hash)?)))
+            .filter_map(|v| wanted.get(&v.info_hash).map(|(priority, limit)| (v, *priority, *limit)))
             .collect();
 
-        let global = u64::from(self.effective_limits().down_kbps) * 1024;
-        let total: u64 = downloading.iter().map(|(v, _)| v.down_speed).sum();
+        let total: u64 = downloading.iter().map(|(v, _, _)| v.down_speed).sum();
         let mut state = self.bandwidth.lock();
         let measured = state.capacity.update(total);
-        let mixed = downloading.windows(2).any(|pair| pair[0].1 != pair[1].1);
-
-        if downloading.len() < 2 || !mixed {
-            // rien à départager : aucune limite par torrent
-            for hash in std::mem::take(&mut state.caps).into_keys() {
-                self.engine.set_torrent_download_limit(&hash, None);
-            }
+        // cas courant : un seul torrent, pas de limite à la main, aucune limite posée
+        let any_limit = downloading.iter().any(|(_, _, limit)| limit.is_some());
+        if downloading.len() < 2 && !any_limit && state.caps.is_empty() {
             return;
         }
 
-        let capacity = if global > 0 { global } else { measured };
-        let flows: Vec<Flow> = downloading
-            .iter()
-            .map(|(v, priority)| Flow {
-                weight: weight(*priority),
-                speed: v.down_speed,
-                previous_cap: state.caps.get(&v.info_hash).copied(),
-            })
-            .collect();
-        let caps = allocate(capacity, &flows);
+        let mixed = downloading.windows(2).any(|pair| pair[0].1 != pair[1].1);
+        let caps: Vec<Option<u64>> = if downloading.len() >= 2 && mixed {
+            let global = u64::from(self.effective_limits().down_kbps) * 1024;
+            let capacity = if global > 0 { global } else { measured };
+            let flows: Vec<Flow> = downloading
+                .iter()
+                .map(|(v, priority, limit)| Flow {
+                    weight: weight(*priority),
+                    speed: v.down_speed,
+                    previous_cap: state.caps.get(&v.info_hash).copied(),
+                    limit: *limit,
+                })
+                .collect();
+            allocate(capacity, &flows).into_iter().map(Some).collect()
+        } else {
+            // rien à départager : seules les limites choisies à la main
+            downloading.iter().map(|(_, _, limit)| *limit).collect()
+        };
 
         let mut next = HashMap::new();
-        for ((view, _), cap) in downloading.iter().zip(caps) {
-            self.engine.set_torrent_download_limit(&view.info_hash, Some(cap));
-            next.insert(view.info_hash.clone(), cap);
+        for ((view, _, _), cap) in downloading.iter().zip(caps) {
+            self.engine.set_torrent_download_limit(&view.info_hash, cap);
+            if let Some(cap) = cap {
+                next.insert(view.info_hash.clone(), cap);
+            }
         }
-        // torrents qui ne téléchargent plus : limite retirée
+        // torrents qui ne téléchargent plus, ou plus limités : limite retirée
         for hash in state.caps.keys().filter(|h| !next.contains_key(*h)) {
-            self.engine.set_torrent_download_limit(hash, None);
+            if !downloading.iter().any(|(v, _, _)| &v.info_hash == hash) {
+                self.engine.set_torrent_download_limit(hash, None);
+            }
         }
         state.caps = next;
     }
@@ -157,7 +176,16 @@ mod tests {
     const MIB: u64 = 1024 * 1024;
 
     fn flow(weight: u64, speed: u64, previous_cap: Option<u64>) -> Flow {
-        Flow { weight, speed, previous_cap }
+        Flow { weight, speed, previous_cap, limit: None }
+    }
+
+    #[test]
+    fn manual_limit_is_never_exceeded_and_frees_the_rest() {
+        // torrent prioritaire limité à 1 Mio/s : il n'a jamais plus, l'autre récupère le reste
+        let limited_high = Flow { limit: Some(MIB), ..flow(4, MIB, Some(MIB)) };
+        let caps = allocate(10 * MIB, &[limited_high, flow(1, 5 * MIB, Some(5 * MIB))]);
+        assert_eq!(caps[0], MIB);
+        assert_eq!(caps[1], 9 * MIB);
     }
 
     #[test]

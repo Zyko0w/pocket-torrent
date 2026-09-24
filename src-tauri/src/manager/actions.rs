@@ -155,12 +155,21 @@ impl Manager {
     }
 
     pub fn set_limit(&self, id: &str, limit_kbps: u32) -> anyhow::Result<()> {
-        let JobKey::Direct(id) = JobKey::parse(id)? else {
-            bail!("La limite par téléchargement concerne les liens directs.");
-        };
         if limit_kbps > 4_000_000 {
             bail!("Limite invalide (Ko/s, 0 = illimitée).");
         }
+        let id = match JobKey::parse(id)? {
+            JobKey::Direct(id) => id,
+            JobKey::Torrent(hash) => {
+                self.data.lock().torrents.get_mut(&hash).context("Téléchargement introuvable.")?.limit_kbps = limit_kbps;
+                // appliquée tout de suite ; la répartition par priorité en tient compte ensuite
+                let cap = (limit_kbps > 0).then(|| u64::from(limit_kbps) * 1024);
+                self.engine.set_torrent_download_limit(&hash, cap);
+                self.save_now();
+                return Ok(());
+            }
+            JobKey::Pending(_) => bail!("La limite s'applique une fois le torrent démarré."),
+        };
         self.data.lock().direct_mut(&id).context("Téléchargement introuvable.")?.limit_kbps = limit_kbps;
         if let Some(runtime) = self.directs.lock().get(&id) {
             runtime.progress.limit_kbps.store(limit_kbps, Ordering::Relaxed);
