@@ -188,6 +188,8 @@ export interface SettingsView {
   listenPort: number | null
   externalPort: number | null
   defenderAvailable: boolean
+  /** Réglages d'origine (boutons « valeurs par défaut »). */
+  defaults: Settings
 }
 
 /** `null` : clé inchangée ; chaîne vide : clé effacée. */

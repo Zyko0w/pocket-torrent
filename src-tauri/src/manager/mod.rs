@@ -163,6 +163,8 @@ pub struct SettingsView {
     pub external_port: Option<u16>,
     /// Microsoft Defender (`MpCmdRun.exe`) trouvé sur ce PC, pour l'analyse optionnelle (§10.4).
     pub defender_available: bool,
+    /// Réglages d'origine, pour les boutons « valeurs par défaut » de chaque section.
+    pub defaults: Settings,
 }
 
 #[derive(Deserialize, Default)]

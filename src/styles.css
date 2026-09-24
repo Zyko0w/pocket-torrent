@@ -518,3 +518,11 @@ dialog::backdrop { background: rgba(3, 3, 6, 0.75); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* réglages : bouton « valeurs par défaut » dans l'en-tête des sections, mode avancé */
+.card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.card-reset { flex-shrink: 0; }
+.card-reset:disabled { opacity: 0.4; }
+.advanced-toggle { align-self: center; gap: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.hidden-advanced { margin: 4px 0 0; color: var(--text-muted); font-size: 12.5px; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; text-decoration: underline; cursor: pointer; }

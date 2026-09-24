@@ -1,0 +1,96 @@
+{
+  "blocklist": {
+    "enabled": false,
+    "source": ""
+  },
+  "categories": [],
+  "checkUpdates": true,
+  "closeToTray": true,
+  "diskMarginMb": 1024,
+  "downloadDir": "C:\\Users\\test\\Downloads\\Torrents",
+  "gameMode": {
+    "action": "limit",
+    "downKbps": 500,
+    "mode": "auto",
+    "processes": [
+      "cs2.exe",
+      "RocketLeague.exe"
+    ],
+    "upKbps": 50
+  },
+  "limits": {
+    "downKbps": 0,
+    "upKbps": 0
+  },
+  "linkHandlerAsked": false,
+  "magnetPrevious": null,
+  "maxPeersPerTorrent": 0,
+  "notifications": {
+    "done": true,
+    "error": true
+  },
+  "preventSleep": true,
+  "privacy": {
+    "encryption": "require",
+    "hardenedMode": false,
+    "hideAnnounces": false
+  },
+  "queue": {
+    "ignoreSlow": false,
+    "maxActive": 3,
+    "slowThresholdKbps": 10
+  },
+  "r2": {
+    "accountId": "",
+    "bucket": "",
+    "deleteAfterUpload": true,
+    "linkExpiryDays": 7,
+    "publicUrl": ""
+  },
+  "scanDownloads": false,
+  "schedule": {
+    "days": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "downKbps": 0,
+    "enabled": false,
+    "endMinutes": 480,
+    "startMinutes": 0,
+    "upKbps": 0
+  },
+  "security": {
+    "excludedExtensions": [
+      ".exe",
+      ".scr",
+      ".lnk",
+      ".bat",
+      ".cmd",
+      ".vbs",
+      ".msi",
+      ".ps1",
+      ".js",
+      ".jar",
+      ".com",
+      ".pif"
+    ]
+  },
+  "seedWhenDone": false,
+  "seeding": {
+    "ratioLimit": 0.0,
+    "timeLimitMinutes": 0
+  },
+  "torrentPort": 0,
+  "torrentPrevious": null,
+  "uploadSlots": 8,
+  "utpEnabled": false,
+  "vpn": {
+    "adapter": "",
+    "mode": "off"
+  }
+}

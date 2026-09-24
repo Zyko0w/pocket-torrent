@@ -1,5 +1,6 @@
 // Briques communes des sections de réglages.
 import type { ReactNode } from 'react'
+import { ArrowCounterClockwise } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Settings } from '../../api'
 
@@ -7,6 +8,25 @@ import type { Settings } from '../../api'
 export interface SectionProps {
   settings: Settings
   update: (patch: Partial<Settings>) => void
+  /** Réglages d'origine, pour « valeurs par défaut ». */
+  defaults: Settings
+}
+
+/** Remise à zéro d'une section : désactivée si ses réglages sont déjà ceux d'origine. */
+export interface Reset {
+  onReset: () => void
+  disabled: boolean
+}
+
+/**
+ * Remet les réglages `keys` à leur valeur d'origine dans le brouillon (rien n'est appliqué avant
+ * « Enregistrer », et « Annuler » revient en arrière).
+ */
+export function resetOf ({ settings, update, defaults }: SectionProps, keys: (keyof Settings)[]): Reset {
+  return {
+    onReset: () => update(Object.fromEntries(keys.map((key) => [key, defaults[key]])) as Partial<Settings>),
+    disabled: keys.every((key) => JSON.stringify(settings[key]) === JSON.stringify(defaults[key]))
+  }
 }
 
 export const toInt = (value: string, max = Number.MAX_SAFE_INTEGER) =>
@@ -20,11 +40,21 @@ export async function pickFolder (current: string): Promise<string | null> {
 }
 
 /** Carte de réglages : titre, phrase d'explication, puis un réglage par ligne. */
-export function Section ({ id, title, intro, children }: { id: string; title: string; intro: string; children: ReactNode }) {
+export function Section ({ id, title, intro, reset, children }: { id: string; title: string; intro: string; reset?: Reset; children: ReactNode }) {
   return (
     <section className='card' aria-labelledby={id}>
       <header className='card-head'>
-        <h2 className='card-title' id={id}>{title}</h2>
+        <div className='card-title-row'>
+          <h2 className='card-title' id={id}>{title}</h2>
+          {reset && (
+            <button
+              type='button' className='btn btn-ghost btn-sm card-reset' disabled={reset.disabled} onClick={reset.onReset}
+              title={reset.disabled ? 'Déjà aux valeurs par défaut' : 'Remettre cette section aux valeurs par défaut (à enregistrer ensuite)'}
+            >
+              <ArrowCounterClockwise size={14} /> Valeurs par défaut
+            </button>
+          )}
+        </div>
         <p className='card-intro'>{intro}</p>
       </header>
       <div className='card-body'>{children}</div>

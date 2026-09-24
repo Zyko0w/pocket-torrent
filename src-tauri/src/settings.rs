@@ -559,3 +559,21 @@ pub fn slug(text: &str) -> String {
     if out.is_empty() { "categorie".into() } else { out }
 }
 
+
+#[cfg(test)]
+mod fixture_tests {
+    /// Les tests de l'interface utilisent `src/test/defaultSettings.json` : il doit rester égal à
+    /// `Settings::default()` (dossier de téléchargement mis à part, propre à chaque PC).
+    /// Pour le régénérer : `UPDATE_FIXTURES=1 cargo test --lib fixture`.
+    #[test]
+    fn interface_fixture_matches_defaults() {
+        let mut expected = serde_json::to_value(super::Settings::default()).unwrap();
+        expected["downloadDir"] = r"C:\Users\test\Downloads\Torrents".into();
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/test/defaultSettings.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(path, serde_json::to_string_pretty(&expected).unwrap() + "\n").unwrap();
+        }
+        let actual: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(actual, expected, "réglages par défaut changés : relancer avec UPDATE_FIXTURES=1");
+    }
+}

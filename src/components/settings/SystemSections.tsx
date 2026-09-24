@@ -6,13 +6,14 @@ import { getVersion } from '@tauri-apps/api/app'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../Toast'
 import { checkForUpdate } from '../UpdateBanner'
-import { Check, Section, toInt, type SectionProps } from './fields'
+import { Check, Section, resetOf, toInt, type SectionProps } from './fields'
 
-export function NotificationsSection ({ settings, update }: SectionProps) {
+export function NotificationsSection (props: SectionProps) {
+  const { settings, update } = props
   const toast = useToast()
   const notifications = settings.notifications
   return (
-    <Section id='s-notify' title='Notifications' intro='Messages Windows en bas de l’écran.'>
+    <Section id='s-notify' reset={resetOf(props, ['notifications'])} title='Notifications' intro='Messages Windows en bas de l’écran.'>
       <Check checked={notifications.done} onChange={(done) => update({ notifications: { ...notifications, done } })} label='Quand un téléchargement est terminé' />
       <Check checked={notifications.error} onChange={(error) => update({ notifications: { ...notifications, error } })} label='Quand un problème survient' />
       <div>
@@ -36,7 +37,7 @@ interface WindowsSectionProps extends SectionProps {
 export function WindowsSection (props: WindowsSectionProps) {
   const { settings, update } = props
   return (
-    <Section id='s-windows' title='Windows' intro='Démarrage, liens magnet, fichiers .torrent et fermeture.'>
+    <Section id='s-windows' reset={resetOf(props, ['closeToTray', 'preventSleep', 'scanDownloads', 'checkUpdates'])} title='Windows' intro='Démarrage, liens magnet, fichiers .torrent et fermeture.'>
       <Check checked={props.startWithWindows} onChange={props.onStartWithWindowsChange} label='Lancer Pocket Torrent avec Windows' help='Il démarre discrètement, en arrière-plan : son icône apparaît dans la zone de notification, en bas à droite de la barre des tâches.' />
       <Check checked={props.magnetHandler} onChange={props.onMagnetHandlerChange} label='Ouvrir les liens magnet et fichiers .torrent avec Pocket Torrent' help='Un clic sur un lien magnet dans le navigateur, ou un double-clic sur un fichier .torrent, l’ajoute ici. L’ancien programme est remis si tu décoches.' />
       <Check checked={settings.closeToTray} onChange={(closeToTray) => update({ closeToTray })} label='Continuer en arrière-plan quand je ferme la fenêtre' help='Les téléchargements continuent et l’icône reste dans la zone de notification (en bas à droite de la barre des tâches). Pour quitter : clic droit sur l’icône, puis Quitter.' />
@@ -96,9 +97,10 @@ function UpdateCheck () {
   )
 }
 
-export function NetworkSection ({ settings, update, listenPort, externalPort }: SectionProps & { listenPort: number | null; externalPort: number | null }) {
+export function NetworkSection (props: SectionProps & { listenPort: number | null; externalPort: number | null }) {
+  const { settings, update, listenPort, externalPort } = props
   return (
-    <Section id='s-network' title='Réseau et disque' intro='Port des torrents et place à garder libre.'>
+    <Section id='s-network' reset={resetOf(props, ['torrentPort', 'utpEnabled', 'maxPeersPerTorrent', 'uploadSlots', 'diskMarginMb'])} title='Réseau et disque' intro='Port des torrents et place à garder libre.'>
       <div className='field-pair'>
         <div className='field'>
           <label htmlFor='torrent-port'>Port des torrents</label>

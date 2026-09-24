@@ -2,7 +2,7 @@
 import { FolderOpen } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Settings } from '../../api'
-import { Check, Section, type SectionProps } from './fields'
+import { Check, Section, resetOf, type SectionProps } from './fields'
 
 const ENCRYPTION_MODES = [
   ['require', 'Chiffrement obligatoire', 'Tous les échanges avec les pairs sont chiffrés. Les rares pairs qui ne chiffrent pas sont ignorés.'],
@@ -10,12 +10,13 @@ const ENCRYPTION_MODES = [
   ['off', 'Sans chiffrement', 'Échanges en clair, reconnaissables par le fournisseur d’accès.']
 ] as const
 
-export function PrivacySection ({ settings, update }: SectionProps) {
+export function PrivacySection (props: SectionProps) {
+  const { settings, update } = props
   const privacy = settings.privacy
   const setPrivacy = (patch: Partial<Settings['privacy']>) => update({ privacy: { ...privacy, ...patch } })
 
   return (
-    <Section id='s-privacy' title='Confidentialité' intro='Empêcher ton fournisseur d’accès de reconnaître les torrents.'>
+    <Section id='s-privacy' reset={resetOf(props, ['privacy'])} title='Confidentialité' intro='Empêcher ton fournisseur d’accès de reconnaître les torrents.'>
       <div className='mode-list' role='radiogroup' aria-label='Chiffrement'>
         {ENCRYPTION_MODES.map(([value, label, help]) => (
           <label key={value} className={`mode-option${privacy.encryption === value ? ' selected' : ''}`}>
@@ -43,7 +44,8 @@ export function PrivacySection ({ settings, update }: SectionProps) {
   )
 }
 
-export function BlocklistSection ({ settings, update }: SectionProps) {
+export function BlocklistSection (props: SectionProps) {
+  const { settings, update } = props
   const blocklist = settings.blocklist
   const setBlocklist = (patch: Partial<Settings['blocklist']>) => update({ blocklist: { ...blocklist, ...patch } })
   const browse = async () => {
@@ -52,7 +54,7 @@ export function BlocklistSection ({ settings, update }: SectionProps) {
   }
 
   return (
-    <Section id='s-blocklist' title='Liste de blocage d’IP' intro='Refuse les pairs dont l’adresse figure dans une liste (format P2P, texte ou .gz).'>
+    <Section id='s-blocklist' reset={resetOf(props, ['blocklist'])} title='Liste de blocage d’IP' intro='Refuse les pairs dont l’adresse figure dans une liste (format P2P, texte ou .gz).'>
       <Check
         checked={blocklist.enabled}
         onChange={(enabled) => setBlocklist({ enabled })}
@@ -81,9 +83,10 @@ export function BlocklistSection ({ settings, update }: SectionProps) {
 }
 
 /** `extensions` : liste en texte libre (une extension par ligne), éditée à part. */
-export function DangerousFilesSection ({ extensions, onChange }: { extensions: string; onChange: (text: string) => void }) {
+export function DangerousFilesSection ({ extensions, defaults, onChange }: { extensions: string; defaults: string[]; onChange: (text: string) => void }) {
+  const original = defaults.join('\n')
   return (
-    <Section id='s-security' title='Fichiers dangereux' intro='Repérer les exécutables déguisés en média (ex. « film.mkv.exe ») avant de les télécharger.'>
+    <Section id='s-security' reset={{ onReset: () => onChange(original), disabled: extensions.trim() === original }} title='Fichiers dangereux' intro='Repérer les exécutables déguisés en média (ex. « film.mkv.exe ») avant de les télécharger.'>
       <div className='field'>
         <label htmlFor='excluded-extensions'>Extensions signalées <span className='optional'>(une par ligne, avec le point)</span></label>
         <textarea

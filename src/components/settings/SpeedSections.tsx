@@ -1,6 +1,6 @@
 // Vitesses, file d'attente, partage, planificateur et mode jeu.
 import type { Settings } from '../../api'
-import { Check, Section, toFloat, toInt, type SectionProps } from './fields'
+import { Check, Section, resetOf, toFloat, toInt, type SectionProps } from './fields'
 
 const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 const minutesToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
@@ -9,9 +9,10 @@ const timeToMinutes = (t: string) => {
   return (h || 0) * 60 + (m || 0)
 }
 
-export function SpeedSection ({ settings, update }: SectionProps) {
+export function SpeedSection (props: SectionProps) {
+  const { settings, update } = props
   return (
-    <Section id='s-speed' title='Vitesse et file' intro='Limites pour tous les téléchargements. 0 = illimité.'>
+    <Section id='s-speed' reset={resetOf(props, ['limits', 'queue', 'seedWhenDone', 'seeding'])} title='Vitesse et file' intro='Limites pour tous les téléchargements. 0 = illimité.'>
       <div className='field-pair'>
         <div className='field'>
           <label htmlFor='limit-down'>Réception max <span className='optional'>(Ko/s)</span></label>
@@ -72,12 +73,13 @@ export function SpeedSection ({ settings, update }: SectionProps) {
   )
 }
 
-export function ScheduleSection ({ settings, update }: SectionProps) {
+export function ScheduleSection (props: SectionProps) {
+  const { settings, update } = props
   const schedule = settings.schedule
   const setSchedule = (patch: Partial<Settings['schedule']>) => update({ schedule: { ...schedule, ...patch } })
 
   return (
-    <Section id='s-schedule' title='Planificateur' intro='Applique d’autres limites de vitesse pendant une plage horaire (ex. la nuit).'>
+    <Section id='s-schedule' reset={resetOf(props, ['schedule'])} title='Planificateur' intro='Applique d’autres limites de vitesse pendant une plage horaire (ex. la nuit).'>
       <Check checked={schedule.enabled} onChange={(enabled) => setSchedule({ enabled })} label='Activer le planificateur' />
       {schedule.enabled && (
         <>
@@ -135,12 +137,21 @@ export function ScheduleSection ({ settings, update }: SectionProps) {
 }
 
 /** `processes` : liste des programmes en texte libre (une ligne par programme), éditée à part. */
-export function GameSection ({ settings, update, processes, onProcessesChange }: SectionProps & { processes: string; onProcessesChange: (text: string) => void }) {
+export function GameSection (props: SectionProps & { processes: string; onProcessesChange: (text: string) => void }) {
+  const { settings, update, defaults, processes, onProcessesChange } = props
   const gameMode = settings.gameMode
+  const originalProcesses = defaults.gameMode.processes.join('\n')
+  const base = resetOf(props, ['gameMode'])
+  const reset = {
+    onReset: () => { base.onReset(); onProcessesChange(originalProcesses) },
+    // la liste en texte fait foi (le brouillon ne la recopie dans gameMode qu'à l'enregistrement)
+    disabled: JSON.stringify({ ...settings.gameMode, processes: [] }) === JSON.stringify({ ...defaults.gameMode, processes: [] }) &&
+      processes.trim() === originalProcesses
+  }
   const setGame = (patch: Partial<Settings['gameMode']>) => update({ gameMode: { ...gameMode, ...patch } })
 
   return (
-    <Section id='s-game' title='Mode jeu' intro='Laisse la connexion aux jeux quand ils sont lancés.'>
+    <Section id='s-game' reset={reset} title='Mode jeu' intro='Laisse la connexion aux jeux quand ils sont lancés.'>
       <div className='field-pair'>
         <div className='field'>
           <label htmlFor='game-mode'>Activation</label>

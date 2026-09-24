@@ -15,6 +15,7 @@ impl Manager {
             listen_port: self.engine.listen_port(),
             external_port: self.engine.external_port(),
             defender_available: crate::antivirus::available(),
+            defaults: Settings::default(),
         }
     }
 
