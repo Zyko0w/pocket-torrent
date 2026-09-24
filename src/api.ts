@@ -59,6 +59,9 @@ export interface Job {
   canShare: boolean
   /** Fichier .torrent local d'origine, s'il existe encore. */
   sourceFile: string | null
+  /** Recherche des infos d'un magnet : secondes écoulées et pairs trouvés (sinon `null`). */
+  searchSecs: number | null
+  peersFound: number | null
 }
 
 export type GameModeSwitch = 'auto' | 'on' | 'off'

@@ -77,7 +77,12 @@ function Meta ({ job }: { job: Job }) {
       items.push(`${formatSize(job.uploadedBytes)} envoyés`, `ratio ${formatRatio(job.uploadedBytes, job.wantedBytes)}`)
     }
     if (job.finishedAt) items.push(formatDate(job.finishedAt))
-  } else if (job.status !== 'metadata') {
+  } else if (job.status === 'metadata') {
+    if (job.searchSecs !== null) items.push(<><Clock size={12} /> depuis {formatEta(job.searchSecs)}</>)
+    if (job.peersFound !== null) {
+      items.push(<><Users size={12} /> {job.peersFound ? `${plural(job.peersFound, 'pair')} trouvé${job.peersFound > 1 ? 's' : ''}` : 'aucun pair pour l’instant'}</>)
+    }
+  } else {
     if (job.wantedBytes) items.push(`${formatSize(job.progressBytes)} / ${formatSize(job.wantedBytes)}`)
     else if (job.progressBytes) items.push(formatSize(job.progressBytes))
     if (job.status === 'downloading' && job.etaSecs !== null) items.push(<><Clock size={12} /> {formatEta(job.etaSecs)}</>)

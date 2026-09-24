@@ -674,6 +674,16 @@ impl Engine {
 
     /// Récupère le nom et la liste des fichiers sans lancer le téléchargement.
     pub async fn preview(&self, link: &str) -> anyhow::Result<Preview> {
+        self.preview_counting(link, None).await
+    }
+
+    /// Comme `preview`, en comptant dans `peers_seen` les pairs trouvés pendant la recherche des
+    /// infos d'un magnet (affichés pendant « Recherche »).
+    pub async fn preview_counting(
+        &self,
+        link: &str,
+        peers_seen: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    ) -> anyhow::Result<Preview> {
         let key = link.trim().to_owned();
         if let Some(resolved) = self.resolved.lock().get(&key) {
             return Ok(resolved.preview.clone());
@@ -681,7 +691,12 @@ impl Engine {
         let session = self.session();
         let lookup = session.add_torrent(
             add_source(link)?,
-            Some(AddTorrentOptions { list_only: true, initial_peers: magnet_peers(link), ..Default::default() }),
+            Some(AddTorrentOptions {
+                list_only: true,
+                initial_peers: magnet_peers(link),
+                magnet_peers_seen: peers_seen,
+                ..Default::default()
+            }),
         );
         let response = match tokio::time::timeout(MAGNET_TIMEOUT, lookup).await {
             Ok(result) => result.map_err(|err| explain_add_error(err, &self.binding())),
@@ -1007,6 +1022,19 @@ mod sandbox_tests {
         let text = format!("{err:#}");
         assert!(!text.contains("no known way"), "message brut du moteur : {text}");
         assert!(text.contains("VPN coupé"), "{text}");
+        engine.stop().await;
+    }
+
+    #[tokio::test]
+    async fn magnet_search_counts_the_peers_it_tries() {
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        // un seul pair, injoignable (moteur hors ligne) : compté, puis plus aucune source
+        let magnet = "magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a&x.pe=127.0.0.1:9";
+        let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let err = engine.preview_counting(magnet, Some(seen.clone())).await.err().expect("erreur attendue");
+        assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert!(format!("{err:#}").contains("Aucun pair n'a transmis"), "{err:#}");
         engine.stop().await;
     }
 

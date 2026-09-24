@@ -212,6 +212,7 @@ impl Manager {
                 if let Some(task) = self.tasks.lock().remove(&key.id()) {
                     task.abort();
                 }
+                self.searches.lock().remove(id);
                 self.data.lock().pending.retain(|p| &p.id != id);
             }
             JobKey::Direct(id) => {

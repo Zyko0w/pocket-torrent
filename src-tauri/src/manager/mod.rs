@@ -93,6 +93,9 @@ pub struct JobView {
     pub can_share: bool,
     /// Fichier .torrent local d'origine, s'il existe encore (proposé à la suppression).
     pub source_file: Option<String>,
+    /// Recherche des infos d'un magnet : secondes écoulées et pairs trouvés jusqu'ici.
+    pub search_secs: Option<u64>,
+    pub peers_found: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -243,6 +246,13 @@ struct Slot {
     slow: bool,
 }
 
+/// Recherche des infos d'un magnet, affichée pendant « Recherche ».
+#[derive(Clone)]
+pub(crate) struct Search {
+    started: Instant,
+    peers_seen: Arc<std::sync::atomic::AtomicUsize>,
+}
+
 pub struct Manager {
     app: AppHandle,
     data_dir: PathBuf,
@@ -258,6 +268,8 @@ pub struct Manager {
     tasks: Mutex<HashMap<String, JoinHandle<()>>>,
     /// Torrents en cours d'ajout au moteur (à ne pas confondre avec des torrents disparus).
     adding: Mutex<HashSet<String>>,
+    /// Recherches des infos d'un magnet en cours (par identifiant d'attente) : début et pairs trouvés.
+    searches: Mutex<HashMap<String, Search>>,
     game: Mutex<GameState>,
     processes: Mutex<ProcessWatcher>,
     /// Reconstruit quand le VPN change (adresse source, ou blocage s'il est coupé).
@@ -374,6 +386,7 @@ impl Manager {
             directs: Mutex::new(HashMap::new()),
             tasks: Mutex::new(HashMap::new()),
             adding: Mutex::new(HashSet::new()),
+            searches: Mutex::new(HashMap::new()),
             game: Mutex::new(GameState::default()),
             processes: Mutex::new(ProcessWatcher::new()),
             network: RwLock::new(network),

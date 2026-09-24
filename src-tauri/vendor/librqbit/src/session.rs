@@ -323,6 +323,11 @@ pub struct AddTorrentOptions {
 
     // Custom trackers
     pub trackers: Option<Vec<String>>,
+
+    /// Pocket Torrent : compteur incrémenté à chaque adresse de pair reçue (DHT, trackers, pairs
+    /// fournis) pendant la recherche des métadonnées d'un magnet, pour l'afficher.
+    #[serde(skip)]
+    pub magnet_peers_seen: Option<Arc<AtomicUsize>>,
 }
 
 pub struct ListOnlyResponse {
@@ -1454,9 +1459,16 @@ impl Session {
                     (metadata, peer_rx)
                 }
                 None => {
-                    let peer_rx = make_peer_rx().context(
+                    let mut peer_rx = make_peer_rx().context(
                         "no known way to resolve peers (no DHT, no trackers, no initial_peers)",
                     )?;
+                    if let Some(seen) = opts.magnet_peers_seen.clone() {
+                        peer_rx = peer_rx
+                            .inspect(move |_| {
+                                seen.fetch_add(1, Ordering::Relaxed);
+                            })
+                            .boxed();
+                    }
                     let resolved_magnet = self
                         .resolve_magnet(info_hash, peer_rx, &trackers, opts.peer_opts)
                         .await?;

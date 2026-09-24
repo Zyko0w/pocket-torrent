@@ -176,7 +176,11 @@ impl Manager {
     async fn resolve_pending(self: &Arc<Self>, id: &str) -> anyhow::Result<()> {
         let pending =
             self.data.lock().pending.iter().find(|p| p.id == id).cloned().context("Téléchargement retiré.")?;
-        let preview = self.engine.preview(&pending.link).await?;
+        let search = Search { started: Instant::now(), peers_seen: Default::default() };
+        self.searches.lock().insert(id.to_owned(), search.clone());
+        let preview = self.engine.preview_counting(&pending.link, Some(search.peers_seen)).await;
+        self.searches.lock().remove(id);
+        let preview = preview?;
         self.add_resolved(&pending.link, pending.only_files.clone(), pending.common.clone(), &preview).await?;
         self.data.lock().pending.retain(|p| p.id != id);
         self.save_now();

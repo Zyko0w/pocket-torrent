@@ -14,9 +14,11 @@ impl Manager {
         for (hash, entry) in &data.torrents {
             jobs.push(torrent_job(hash, entry, by_hash.get(hash.as_str()).copied()));
         }
+        let searches = self.searches.lock();
         for pending in &data.pending {
-            jobs.push(pending_job(pending));
+            jobs.push(pending_job(pending, searches.get(&pending.id)));
         }
+        drop(searches);
         for entry in &data.directs {
             jobs.push(direct_job(entry, runtimes.get(&entry.id)));
         }
@@ -86,6 +88,8 @@ fn base_job(id: String, kind: &'static str, common: &Common) -> JobView {
         in_engine: false,
         can_share: false,
         source_file: None,
+        search_secs: None,
+        peers_found: None,
     }
 }
 
@@ -134,12 +138,16 @@ fn torrent_job(hash: &str, entry: &TorrentEntry, view: Option<&TorrentView>) -> 
     job
 }
 
-fn pending_job(pending: &PendingTorrent) -> JobView {
+fn pending_job(pending: &PendingTorrent, search: Option<&Search>) -> JobView {
     let mut job = base_job(format!("p:{}", pending.id), "torrent", &pending.common);
     job.name = pending.name.clone();
     job.link = Some(pending.link.clone());
     job.source_file = Path::new(&pending.link).is_file().then(|| pending.link.clone());
     job.status = if pending.common.error.is_some() { "error" } else { "metadata" };
+    if let Some(search) = search.filter(|_| pending.common.error.is_none()) {
+        job.search_secs = Some(search.started.elapsed().as_secs());
+        job.peers_found = Some(search.peers_seen.load(Ordering::Relaxed));
+    }
     job
 }
 
