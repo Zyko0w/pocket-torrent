@@ -244,8 +244,6 @@ impl Manager {
             self.data.lock().torrents.remove(&hash);
             return Err(err);
         }
-        let display_name = preview.name.clone().unwrap_or_else(|| hash.clone());
-        hooks::run(&settings.hooks.on_add, &display_name, &base, &hash);
         if space.is_some() {
             let name = preview.name.clone().unwrap_or_else(|| "Le torrent".into());
             self.notify(Notify::Error, "Espace disque insuffisant", &format!("{name} a été mis en pause."));

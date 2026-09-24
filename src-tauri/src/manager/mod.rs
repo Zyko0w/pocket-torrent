@@ -17,7 +17,6 @@ use tauri_plugin_notification::NotificationExt;
 use crate::danger;
 use crate::direct::{self, Download, DownloadError, Progress};
 use crate::engine::{Binding, Engine, EngineState, FileView, PeerView, Preview, ShareOptions, TorrentView};
-use crate::hooks;
 use crate::r2::{self, R2};
 use crate::secrets::{self, Secret};
 use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};

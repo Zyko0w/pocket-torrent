@@ -5,7 +5,6 @@ mod direct;
 mod dns;
 mod engine;
 mod filedrop;
-mod hooks;
 mod logging;
 mod manager;
 mod netif;

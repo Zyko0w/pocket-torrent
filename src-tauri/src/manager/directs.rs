@@ -103,7 +103,6 @@ impl Manager {
                 };
                 tracing::info!("téléchargement direct terminé : {name}");
                 self.notify(Notify::Done, "Téléchargement terminé", &name);
-                hooks::run(&self.settings.read().hooks.on_done, &name, &path, "");
                 self.maybe_scan(name.clone(), path.clone());
                 if dest == Dest::R2 {
                     self.start_delivery(JobKey::Direct(id.to_owned()));

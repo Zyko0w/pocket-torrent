@@ -171,7 +171,6 @@ export interface Settings {
   preventSleep: boolean
   scanDownloads: boolean
   checkUpdates: boolean
-  hooks: { onAdd: string; onDone: string }
   magnetPrevious: string | null
   torrentPrevious: string | null
   r2: { accountId: string; bucket: string; publicUrl: string; linkExpiryDays: number; deleteAfterUpload: boolean }

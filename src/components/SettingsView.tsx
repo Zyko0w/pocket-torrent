@@ -2,7 +2,7 @@
 // thème (chaque section vit dans `settings/`). Un thème à la fois, choisi dans la colonne de gauche.
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
-  ArrowSquareIn, ChartBar, Cloud, FolderSimple, Gauge, Lightning, ShieldCheck, SpinnerGap, Stethoscope, WarningCircle,
+  ArrowSquareIn, ChartBar, Cloud, FolderSimple, Gauge, ShieldCheck, SpinnerGap, Stethoscope, WarningCircle,
   WifiHigh
 } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -16,18 +16,17 @@ import { Section } from './settings/fields'
 import { FoldersSection } from './settings/FoldersSection'
 import { GameSection, ScheduleSection, SpeedSection } from './settings/SpeedSections'
 import { BlocklistSection, DangerousFilesSection, PrivacySection } from './settings/PrivacySections'
-import { AboutSection, HooksSection, NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
+import { AboutSection, NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
 import { R2Section } from './settings/R2Section'
 
-export type SettingsTab = 'general' | 'transfers' | 'network' | 'privacy' | 'automation' | 'cloud' | 'data' | 'diagnostics'
+export type SettingsTab = 'general' | 'transfers' | 'network' | 'privacy' | 'cloud' | 'data' | 'diagnostics'
 
 export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode }[] = [
   { id: 'general', label: 'Général', icon: <FolderSimple size={16} /> },
   { id: 'transfers', label: 'Vitesse et file', icon: <Gauge size={16} /> },
   { id: 'network', label: 'VPN et réseau', icon: <WifiHigh size={16} /> },
   { id: 'privacy', label: 'Confidentialité', icon: <ShieldCheck size={16} /> },
-  { id: 'automation', label: 'Automatisation', icon: <Lightning size={16} /> },
   { id: 'cloud', label: 'Cloudflare R2', icon: <Cloud size={16} /> },
   { id: 'data', label: 'Données', icon: <ChartBar size={16} /> },
   { id: 'diagnostics', label: 'Diagnostic', icon: <Stethoscope size={16} /> }
@@ -186,7 +185,6 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
         <DangerousFilesSection extensions={draft.excludedExtensions} onChange={(excludedExtensions) => edit({ excludedExtensions })} />
       </>
     ),
-    automation: <HooksSection {...section} />,
     cloud: <R2Section {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
     data: (
       <>

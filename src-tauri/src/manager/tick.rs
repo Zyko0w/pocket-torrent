@@ -159,7 +159,6 @@ impl Manager {
         }
         self.notify(Notify::Done, "Téléchargement terminé", &name);
         if let Ok(path) = self.engine.content_path(hash) {
-            hooks::run(&self.settings.read().hooks.on_done, &name, &path, hash);
             self.maybe_scan(name.clone(), path);
         }
         let seed = self.settings.read().seed_when_done;

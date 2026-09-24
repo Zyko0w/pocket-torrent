@@ -122,29 +122,6 @@ export function AboutSection () {
   )
 }
 
-export function HooksSection ({ settings, update }: SectionProps) {
-  const hooks = settings.hooks
-  return (
-    <Section id='s-hooks' title='Programme externe' intro='Lancer une commande à l’ajout ou à la fin d’un téléchargement.'>
-      <div className='field'>
-        <label htmlFor='hook-add'>À l’ajout</label>
-        <input
-          id='hook-add' className='input mono' spellCheck={false} placeholder='ex. "C:\scripts\notif.exe" "%N"'
-          value={hooks.onAdd} onChange={(e) => update({ hooks: { ...hooks, onAdd: e.target.value } })}
-        />
-      </div>
-      <div className='field'>
-        <label htmlFor='hook-done'>À la fin</label>
-        <input
-          id='hook-done' className='input mono' spellCheck={false} placeholder='ex. "C:\scripts\notif.exe" "%N" "%F"'
-          value={hooks.onDone} onChange={(e) => update({ hooks: { ...hooks, onDone: e.target.value } })}
-        />
-      </div>
-      <p className='help'>Vide = désactivé. Variables : <b className='mono'>%N</b> nom, <b className='mono'>%F</b> fichier ou dossier, <b className='mono'>%I</b> empreinte du torrent (vide pour un lien direct).</p>
-    </Section>
-  )
-}
-
 export function NetworkSection ({ settings, update, listenPort, externalPort }: SectionProps & { listenPort: number | null; externalPort: number | null }) {
   return (
     <Section id='s-network' title='Réseau et disque' intro='Port des torrents et place à garder libre.'>

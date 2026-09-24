@@ -42,7 +42,6 @@ pub struct Settings {
     /// Cherche une nouvelle version au démarrage (GitHub Releases) et la propose, sans
     /// jamais l'installer d'office. Seule connexion de l'appli qui ne concerne pas un transfert.
     pub check_updates: bool,
-    pub hooks: HooksSettings,
     /// Ancien programme associé aux liens magnet, remis en place si on désactive le nôtre.
     pub magnet_previous: Option<String>,
     /// Ancien programme associé aux fichiers .torrent, remis en place si on désactive le nôtre.
@@ -149,16 +148,6 @@ impl VpnSettings {
             VpnMode::Wireguard => Some(WIREGUARD_ADAPTER),
         }
     }
-}
-
-/// Commandes lancées à l'ajout ou à la fin d'un téléchargement. Vide = désactivé.
-/// Variables substituées : `%N` (nom), `%F` (fichier ou dossier final), `%I` (empreinte du
-/// torrent, vide pour un lien direct).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", default)]
-pub struct HooksSettings {
-    pub on_add: String,
-    pub on_done: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -351,7 +340,6 @@ impl Default for Settings {
             prevent_sleep: true,
             scan_downloads: false,
             check_updates: true,
-            hooks: HooksSettings::default(),
             magnet_previous: None,
             torrent_previous: None,
             r2: R2Settings::default(),
@@ -517,14 +505,6 @@ impl Settings {
                 .any(|e| e.len() > 20 || !e.starts_with('.') || !e[1..].chars().all(|c| c.is_ascii_alphanumeric()))
         {
             return Err("Extensions signalées : un point suivi de lettres/chiffres (ex. « .exe »), 60 maximum.".into());
-        }
-
-        self.hooks.on_add = self.hooks.on_add.trim().to_owned();
-        self.hooks.on_done = self.hooks.on_done.trim().to_owned();
-        for (command, label) in [(&self.hooks.on_add, "à l'ajout"), (&self.hooks.on_done, "à la fin")] {
-            if command.chars().count() > 500 {
-                return Err(format!("Programme externe {label} : 500 caractères maximum."));
-            }
         }
 
         if self.schedule.start_minutes > 1439 || self.schedule.end_minutes > 1439 {
