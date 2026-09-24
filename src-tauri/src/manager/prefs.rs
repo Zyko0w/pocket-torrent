@@ -6,10 +6,7 @@ impl Manager {
     pub fn settings_view(&self) -> SettingsView {
         SettingsView {
             settings: self.settings(),
-            secrets: SecretsSet {
-                r2_access_key_id: secrets::is_set(Secret::R2AccessKeyId),
-                r2_secret_access_key: secrets::is_set(Secret::R2SecretAccessKey),
-            },
+            secrets: SecretsSet { storage_to_token: secrets::is_set(Secret::StorageToToken) },
             start_with_windows: system::start_with_windows_enabled(),
             magnet_handler: system::link_handler_enabled(),
             listen_port: self.engine.listen_port(),
@@ -31,15 +28,9 @@ impl Manager {
                 .with_context(|| format!("Impossible de créer le dossier « {} »", dir.display()))?;
         }
 
-        for (secret, value) in [
-            (Secret::R2AccessKeyId, &input.secrets.r2_access_key_id),
-            (Secret::R2SecretAccessKey, &input.secrets.r2_secret_access_key),
-        ] {
-            if let Some(value) = value {
-                secrets::set(secret, value)?;
-            }
+        if let Some(token) = &input.secrets.storage_to_token {
+            secrets::set(Secret::StorageToToken, token)?;
         }
-        self.r2_keys_set.store(r2_keys_set(), Ordering::Relaxed);
         if input.start_with_windows != system::start_with_windows_enabled() {
             system::set_start_with_windows(input.start_with_windows)?;
         }
@@ -87,11 +78,9 @@ impl Manager {
         self.show_notification("Pocket Torrent", "Les notifications fonctionnent.");
     }
 
-    pub async fn test_r2(&self) -> anyhow::Result<()> {
-        let r2 = R2::from_settings(&self.settings().r2).ok_or_else(|| {
-            anyhow!("Renseigne l'identifiant de compte, le bucket et les deux clés, puis enregistre.")
-        })??;
-        r2.check(&self.http()).await
+    /// Bouton « Tester » : storage.to joignable, et quota restant.
+    pub async fn test_storage_to(&self) -> anyhow::Result<String> {
+        StorageTo::from_settings(&self.settings().storage_to)?.check(&self.http()).await
     }
 
     /// Poser la question du premier lancement : jamais posée, et Pocket Torrent n'ouvre pas

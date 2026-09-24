@@ -104,7 +104,7 @@ impl Manager {
                 tracing::info!("téléchargement direct terminé : {name}");
                 self.notify(Notify::Done, "Téléchargement terminé", &name);
                 self.maybe_scan(name.clone(), path.clone());
-                if dest == Dest::R2 {
+                if dest == Dest::StorageTo {
                     self.start_delivery(JobKey::Direct(id.to_owned()));
                 }
                 self.save_now();

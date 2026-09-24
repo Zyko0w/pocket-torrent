@@ -63,3 +63,14 @@ redirection de port NAT-PMP, question des liens magnet au premier lancement.
 - Répartition de la bande passante : sortie immédiate quand au plus un torrent télécharge (cas courant), sans reconstruire la table des priorités chaque seconde.
 - Redémarrage du moteur, relance des recherches et des limites : une seule fonction (`restart_engine`) au lieu de trois copies.
 - Réglages d'origine : fournis par Rust (`Settings::default`), avec un test qui garde le jeu d'essai de l'interface synchronisé.
+
+---
+
+# Remplacement de Cloudflare R2 par storage.to — 24/09/2026
+
+- R2 retiré (code, réglages, dépendance `rusty-s3`) ; les clés R2 des anciennes versions sont effacées du Gestionnaire d'identification au démarrage.
+- Destination « r2 » d'anciennes listes : lue comme « garder sur le PC », jamais d'envoi non choisi (`store::dest_tests`).
+- Requêtes limitées à `https://storage.to/api` ; adresses d'envoi signées acceptées en HTTPS seulement ; jamais écrites dans les erreurs ni le journal.
+- Identifiants renvoyés par storage.to validés (lettres et chiffres) avant d'être mis dans une adresse ; suppression refusée pour un identifiant ou un type piégé (`storage_to::tests::deletion_needs_the_owner_token_and_a_plain_id`).
+- Preuves de propriété (suppression à distance) gardées côté Rust, jamais envoyées à l'interface (`overview::tests::storage_owner_tokens_never_reach_the_interface`) ; jeton de compte et jeton de visiteur dans le Gestionnaire d'identification.
+- Envoi testé contre un faux serveur storage.to en bac à sable : envoi simple, envoi en plusieurs parties reconstitué à l'identique, collection, durée de vie.

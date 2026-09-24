@@ -38,7 +38,6 @@ sysinfo = "0.39"
 # planificateur de limites (§5) : heure et jour locaux, sans base de fuseaux horaires
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 parking_lot = "0.12"
-rusty-s3 = "0.10"
 percent-encoding = "2"
 # dossiers surveillés : ReadDirectoryChangesW sous Windows, pas de scrutation périodique
 # serveur de streaming local (§7.6) : Range géré par tower-http, pas réimplémenté à la main
@@ -53,6 +52,10 @@ webpki-root-certs = "1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 base64 = "0.22"
+
+# tests seulement : faux serveur storage.to (JSON) en bac à sable
+[dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
 
 [target.'cfg(windows)'.dependencies]
 # chemin réel des fichiers déposés (voir filedrop.rs) : mêmes versions que Tauri/wry

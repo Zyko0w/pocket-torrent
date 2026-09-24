@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 const USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
 
-/// Client HTTP des téléchargements directs et de R2.
+/// Client HTTP des téléchargements directs et des envois en ligne.
 /// `local_ip` : adresse du VPN d'où partent les requêtes. `offline` : VPN exigé mais coupé,
 /// toute requête échoue (proxy injoignable) au lieu de sortir sans protection.
 /// Les noms sont résolus par DNS chiffré (`resolver`) et les certificats vérifiés avec les autorités

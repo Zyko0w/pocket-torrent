@@ -76,7 +76,7 @@ fn local_category(settings: &Settings, category: Option<&ExportedCategory>) -> O
 }
 
 impl Manager {
-    /// Torrent déjà présent dans la liste (et pas seulement dans l'historique d'un envoi R2).
+    /// Torrent déjà présent dans la liste (et pas seulement dans l'historique d'un envoi en ligne).
     fn is_listed(&self, hash: &str) -> bool {
         self.data.lock().torrents.get(hash).is_some_and(|e| !e.removed)
     }

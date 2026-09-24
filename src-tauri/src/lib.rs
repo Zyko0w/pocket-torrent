@@ -10,10 +10,10 @@ mod manager;
 mod natpmp;
 mod netif;
 mod perf;
-mod r2;
 mod secrets;
 mod settings;
 mod store;
+mod storage_to;
 mod stream;
 mod system;
 mod tray;
@@ -56,6 +56,8 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             // doit rester en vie pour toute la durée de l'application (voir logging::init)
             app.manage(logging::init(&data_dir)?);
+            // clés Cloudflare R2 des anciennes versions : R2 n'est plus géré, rien ne doit traîner
+            secrets::forget_legacy();
             // ancien nom ou ancien dossier d'installation : démarrage avec Windows et liens magnet suivent
             if let Err(err) = system::refresh_registration() {
                 tracing::warn!("mise à jour des associations Windows impossible : {err:#}");
@@ -132,7 +134,7 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::test_notification,
-            commands::test_r2,
+            commands::test_storage_to,
             commands::network_adapters,
             commands::check_public_ip,
             commands::tunnel_view,

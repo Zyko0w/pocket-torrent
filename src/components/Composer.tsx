@@ -14,14 +14,13 @@ interface ComposerProps {
   categories: { id: string; name: string }[]
   /** Catégorie choisie dans la barre latérale : proposée par défaut. */
   defaultCategory: string
-  r2Ready: boolean
   onChooseFiles: (request: AddRequest) => void
   onAdded: () => void
 }
 
 const isTorrentLink = (link: string) => /^magnet:/i.test(link) || /\.torrent$/i.test(link)
 
-export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory, r2Ready, onChooseFiles, onAdded }: ComposerProps) {
+export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory, onChooseFiles, onAdded }: ComposerProps) {
   const toast = useToast()
   const textarea = useRef<HTMLTextAreaElement>(null)
   const [links, setLinks] = useState('')
@@ -42,9 +41,8 @@ export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory,
   }, [prefill, onPrefillUsed])
   useEffect(() => { setCategory(defaultCategory) }, [defaultCategory])
 
-  // catégorie supprimée ou R2 retiré dans les réglages
+  // catégorie supprimée dans les réglages
   useEffect(() => { if (category && !categories.some((c) => c.id === category)) setCategory('') }, [categories, category])
-  useEffect(() => { if (!r2Ready && dest === 'r2') setDest('local') }, [r2Ready, dest])
 
   // le champ grandit avec le nombre de liens
   useEffect(() => {
@@ -162,15 +160,13 @@ export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory,
               <option value='low'>Priorité basse</option>
             </select>
           </label>
-          {r2Ready && (
-            <label className='select-inline'>
-              <span className='sr-only'>Destination</span>
-              <select value={dest} onChange={(e) => setDest(e.target.value as Dest)}>
-                <option value='local'>Garder sur le PC</option>
-                <option value='r2'>Envoyer sur R2</option>
-              </select>
-            </label>
-          )}
+          <label className='select-inline'>
+            <span className='sr-only'>Destination</span>
+            <select value={dest} title='Garder les fichiers sur ce PC, ou les envoyer sur storage.to une fois terminés (lien de partage)' onChange={(e) => setDest(e.target.value as Dest)}>
+              <option value='local'>Garder sur le PC</option>
+              <option value='storageTo'>Envoyer sur storage.to</option>
+            </select>
+          </label>
         </div>
       </div>
     </form>

@@ -697,7 +697,7 @@ impl Engine {
                 .iter()
                 .enumerate()
                 .filter(|(index, file)| !file.attrs.padding && is_selected(mask.as_deref(), *index))
-                // jamais un fichier hors du dossier du torrent (l'envoi R2 lirait n'importe quoi)
+                // jamais un fichier hors du dossier du torrent (l'envoi en ligne lirait n'importe quoi)
                 .filter(|(_, file)| {
                     file.relative_filename.components().all(|c| matches!(c, std::path::Component::Normal(_)))
                 })

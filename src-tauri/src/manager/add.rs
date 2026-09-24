@@ -46,9 +46,6 @@ impl Manager {
         if options.category.is_some() && settings.category(options.category.as_deref()).is_none() {
             bail!("Catégorie inconnue.");
         }
-        if options.dest == Dest::R2 && R2::from_settings(&settings.r2).is_none() {
-            bail!("Cloudflare R2 n'est pas configuré (voir Réglages).");
-        }
         let mut report = AddReport { added: 0, failed: Vec::new(), errors: Vec::new() };
         for link in links.iter().map(|l| l.trim()).filter(|l| !l.is_empty()) {
             match self.add_link(link, &options, &settings).await {
@@ -123,7 +120,7 @@ impl Manager {
         }
         let id = short_id();
         let folder = match options.dest {
-            Dest::R2 => settings.download_dir.join(R2_WORK_DIR).join(&id),
+            Dest::StorageTo => settings.download_dir.join(UPLOAD_WORK_DIR).join(&id),
             Dest::Local => settings.folder_for(options.category.as_deref()),
         };
         self.data.lock().directs.push(DirectEntry {
@@ -206,7 +203,7 @@ impl Manager {
         }
         let settings = self.settings();
         let base = match common.dest {
-            Dest::R2 => settings.download_dir.join(R2_WORK_DIR),
+            Dest::StorageTo => settings.download_dir.join(UPLOAD_WORK_DIR),
             Dest::Local => settings.folder_for(common.category.as_deref()),
         };
         let chosen: Option<HashSet<usize>> = only_files.as_ref().map(|list| list.iter().copied().collect());

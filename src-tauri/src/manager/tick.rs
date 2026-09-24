@@ -164,10 +164,10 @@ impl Manager {
             self.maybe_scan(name.clone(), path);
         }
         let seed = self.settings.read().seed_when_done;
-        if dest == Dest::R2 || !seed {
+        if dest == Dest::StorageTo || !seed {
             let _ = self.engine.pause(hash).await;
         }
-        if dest == Dest::R2 {
+        if dest == Dest::StorageTo {
             self.start_delivery(JobKey::Torrent(hash.to_owned()));
         }
         self.save_now();

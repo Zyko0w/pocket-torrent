@@ -33,7 +33,7 @@ function statusOf (job: Job): StatusInfo {
       if (job.hold === 'vpn') return { label: 'Pause · VPN', tone: 'tone-danger', icon: <ShieldWarning size={16} /> }
       return { label: 'En pause', tone: 'tone-warning', icon: <Pause size={16} /> }
     case 'seeding': return { label: 'Partage', tone: 'tone-success', icon: <ShareNetwork size={16} /> }
-    case 'uploading': return { label: 'Envoi R2', tone: 'tone-active', icon: <CloudArrowUp size={16} /> }
+    case 'uploading': return { label: 'Envoi en ligne', tone: 'tone-active', icon: <CloudArrowUp size={16} /> }
     case 'done':
       if (job.hold === 'seeded') return { label: 'Ratio atteint', tone: 'tone-success', icon: <CheckCircle size={16} /> }
       return { label: 'Terminé', tone: 'tone-success', icon: <CheckCircle size={16} /> }
@@ -142,7 +142,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
   if (canShowPeers) details.push({ id: 'peers', label: 'Pairs', icon: <Users size={14} /> })
   if (isTorrent && job.inEngine) details.push({ id: 'trackers', label: 'Trackers', icon: <Broadcast size={14} /> })
   if (isTorrent && job.inEngine) details.push({ id: 'pieces', label: 'Pièces', icon: <SquaresFour size={14} /> })
-  if (job.delivery && job.delivery.links.length > 0) details.push({ id: 'links', label: 'Liens R2', icon: <LinkSimple size={14} /> })
+  if (job.delivery && job.delivery.links.length > 0) details.push({ id: 'links', label: 'Liens', icon: <LinkSimple size={14} /> })
   const shown = details.find((d) => d.id === detail) ? detail : null
   const toggleDetails = () => setDetail(shown ? null : details[0]?.id ?? null)
 
@@ -222,7 +222,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
             {categoryName && <span className='tag'>{categoryName}</span>}
             {job.priority !== 'normal' && !finished && <span className={`tag${job.priority === 'high' ? ' accent' : ''}`}>{PRIORITY_LABELS[job.priority]}</span>}
             {job.kind === 'http' && <span className='tag'>Direct</span>}
-            {(job.dest === 'r2' || job.delivery?.state === 'done') && <span className='tag'><CloudArrowUp size={11} /> R2</span>}
+            {(job.dest === 'storageTo' || job.delivery?.state === 'done') && <span className='tag' title='Envoyé sur storage.to une fois terminé'><CloudArrowUp size={11} /> En ligne</span>}
           </div>
           {showProgress && (
             <ProgressBar

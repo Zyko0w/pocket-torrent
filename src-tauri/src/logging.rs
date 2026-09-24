@@ -59,7 +59,7 @@ fn remove_old_name_logs(dir: &Path) {
 // ------------------------------------------------------------ masquage des secrets
 
 /// Le journal est fait pour être exporté et partagé (§10.5) : passkeys de trackers privés,
-/// jetons et signatures d'URL (liens directs, R2) et identifiants n'y sont jamais écrits.
+/// jetons et signatures d'URL (liens directs, envois en ligne) et identifiants n'y sont jamais écrits.
 /// Appliqué à chaque ligne, quel que soit le module qui l'émet (moteur compris).
 #[derive(Clone)]
 struct Redacting<W>(W);

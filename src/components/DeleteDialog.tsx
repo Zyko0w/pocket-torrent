@@ -5,16 +5,16 @@ import { Modal } from './Modal'
 interface DeleteDialogProps {
   job: Job | null
   onCancel: () => void
-  onConfirm: (deleteFiles: boolean, deleteR2: boolean, deleteSource: boolean) => void
+  onConfirm: (deleteFiles: boolean, deleteOnline: boolean, deleteSource: boolean) => void
 }
 
 export function DeleteDialog ({ job, onCancel, onConfirm }: DeleteDialogProps) {
   const [deleteFiles, setDeleteFiles] = useState(false)
-  const [deleteR2, setDeleteR2] = useState(false)
+  const [deleteOnline, setDeleteOnline] = useState(false)
   const [deleteSource, setDeleteSource] = useState(false)
   const finished = job ? job.status === 'done' || job.status === 'seeding' : false
   const running = Boolean(job && !finished && job.status !== 'error')
-  const onR2 = Boolean(job?.delivery?.links.length)
+  const online = Boolean(job?.delivery?.links.length)
   const source = job?.sourceFile ?? null
   // fichiers déjà envoyés puis effacés du PC : rien à supprimer localement
   const filesOnDisk = Boolean(job && !(job.kind === 'torrent' && !job.inEngine) && !job.id.startsWith('p:'))
@@ -25,14 +25,14 @@ export function DeleteDialog ({ job, onCancel, onConfirm }: DeleteDialogProps) {
     // réinitialisé seulement quand la boîte s'ouvre pour un autre téléchargement
     if (jobId !== undefined) {
       setDeleteFiles(!finished)
-      setDeleteR2(false)
+      setDeleteOnline(false)
       setDeleteSource(false)
     }
   }, [jobId])
 
   return (
     <Modal open={job !== null} onClose={onCancel} labelledBy='delete-title'>
-      <form onSubmit={(e) => { e.preventDefault(); onConfirm(filesOnDisk && deleteFiles, onR2 && deleteR2, Boolean(source) && deleteSource) }}>
+      <form onSubmit={(e) => { e.preventDefault(); onConfirm(filesOnDisk && deleteFiles, online && deleteOnline, Boolean(source) && deleteSource) }}>
         <div className='dialog-body'>
           <h2 id='delete-title'>{running ? 'Arrêter et supprimer ?' : 'Supprimer de la liste ?'}</h2>
           <p className='dialog-name'>{job?.name ?? job?.link ?? 'Téléchargement'}</p>
@@ -65,11 +65,11 @@ export function DeleteDialog ({ job, onCancel, onConfirm }: DeleteDialogProps) {
               </span>
             </label>
           )}
-          {onR2 && (
+          {online && (
             <label className='check'>
-              <input type='checkbox' checked={deleteR2} onChange={(e) => setDeleteR2(e.target.checked)} />
+              <input type='checkbox' checked={deleteOnline} onChange={(e) => setDeleteOnline(e.target.checked)} />
               <span>
-                Supprimer aussi les fichiers sur Cloudflare R2
+                Supprimer aussi les fichiers sur storage.to
                 <small>Les liens partagés ne fonctionneront plus.</small>
               </span>
             </label>

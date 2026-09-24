@@ -76,10 +76,10 @@ pub async fn delete_job(
     state: State<'_, AppState>,
     id: String,
     delete_files: bool,
-    delete_r2: bool,
+    delete_online: bool,
     delete_source: Option<bool>,
 ) -> CommandResult<()> {
-    state.manager.delete(&id, delete_files, delete_r2, delete_source.unwrap_or(false)).await.map_err(message)
+    state.manager.delete(&id, delete_files, delete_online, delete_source.unwrap_or(false)).await.map_err(message)
 }
 
 #[tauri::command]
@@ -336,8 +336,8 @@ pub async fn tunnel_disconnect(state: State<'_, AppState>) -> CommandResult<()> 
 }
 
 #[tauri::command]
-pub async fn test_r2(state: State<'_, AppState>) -> CommandResult<()> {
-    state.manager.test_r2().await.map_err(message)
+pub async fn test_storage_to(state: State<'_, AppState>) -> CommandResult<String> {
+    state.manager.test_storage_to().await.map_err(message)
 }
 
 // ------------------------------------------------------------ performance (§2.2)

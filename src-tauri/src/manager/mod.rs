@@ -1,5 +1,5 @@
 //! Chef d'orchestre : réunit torrents et téléchargements directs dans une seule liste,
-//! et gère la file d'attente, le mode jeu, l'espace disque, l'envoi sur R2 et les notifications.
+//! et gère la file d'attente, le mode jeu, l'espace disque, l'envoi en ligne et les notifications.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ use tauri_plugin_notification::NotificationExt;
 use crate::danger;
 use crate::direct::{self, Download, DownloadError, Progress};
 use crate::engine::{Binding, Engine, EngineState, FileView, PeerView, Preview, ShareOptions, TorrentView};
-use crate::r2::{self, R2};
+use crate::storage_to::StorageTo;
 use crate::secrets::{self, Secret};
 use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};
 use crate::store::{
@@ -52,8 +52,8 @@ pub use forwarding::ForwardingView;
 pub use vpn::{IpCheck, VpnView};
 
 const MB: u64 = 1024 * 1024;
-/// Dossier de travail des téléchargements destinés à R2 (dans le dossier de téléchargement).
-const R2_WORK_DIR: &str = ".envoi-r2";
+/// Dossier de travail des téléchargements à envoyer en ligne (dans le dossier de téléchargement).
+const UPLOAD_WORK_DIR: &str = ".envoi-en-ligne";
 const LEGACY_1FICHIER: &str = "1fichier n'est plus pris en charge : supprime ce téléchargement de la liste.";
 
 // ------------------------------------------------------------------ vues
@@ -123,7 +123,6 @@ pub struct Overview {
     pub up_speed: u64,
     pub game: GameView,
     pub categories: Vec<CategoryView>,
-    pub r2_ready: bool,
     pub vpn: VpnView,
     pub power: PowerView,
 }
@@ -149,8 +148,7 @@ pub struct AddReport {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretsSet {
-    pub r2_access_key_id: bool,
-    pub r2_secret_access_key: bool,
+    pub storage_to_token: bool,
 }
 
 #[derive(Serialize)]
@@ -173,8 +171,7 @@ pub struct SettingsView {
 #[serde(rename_all = "camelCase", default)]
 pub struct SecretsInput {
     /// `None` : inchangé ; chaîne vide : effacer.
-    pub r2_access_key_id: Option<String>,
-    pub r2_secret_access_key: Option<String>,
+    pub storage_to_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -267,7 +264,7 @@ pub struct Manager {
     dirty: AtomicBool,
     last_save: Mutex<Instant>,
     directs: Mutex<HashMap<String, DirectRuntime>>,
-    /// Recherches de métadonnées et envois R2 en cours, par identifiant de téléchargement.
+    /// Recherches de métadonnées et envois en ligne en cours, par identifiant de téléchargement.
     tasks: Mutex<HashMap<String, JoinHandle<()>>>,
     /// Torrents en cours d'ajout au moteur (à ne pas confondre avec des torrents disparus).
     adding: Mutex<HashSet<String>>,
@@ -302,16 +299,9 @@ pub struct Manager {
     traffic: Mutex<stats::TrafficSample>,
     /// « Éteindre le PC quand tout est terminé » (session en cours seulement).
     power: Mutex<power::PowerState>,
-    /// Les deux clés R2 sont enregistrées : tenu à jour ici plutôt que relu dans le Gestionnaire
-    /// d'identification Windows à chaque rafraîchissement de la liste (chaque seconde).
-    r2_keys_set: AtomicBool,
     /// Arrêt en cours (« Quitter », mise à jour, arrêt de Windows) : la boucle s'arrête et un
     /// second arrêt ne refait rien.
     closing: AtomicBool,
-}
-
-fn r2_keys_set() -> bool {
-    secrets::is_set(Secret::R2AccessKeyId) && secrets::is_set(Secret::R2SecretAccessKey)
 }
 
 /// Liaison réseau voulue selon les réglages et l'état des cartes réseau.
@@ -409,7 +399,6 @@ impl Manager {
             vpn_since: Mutex::new(Some(Instant::now())),
             tunnel_health_at: Mutex::new(None),
             sleep_blocked: AtomicBool::new(false),
-            r2_keys_set: AtomicBool::new(r2_keys_set()),
             closing: AtomicBool::new(false),
         });
 

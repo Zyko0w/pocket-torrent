@@ -1,4 +1,4 @@
-//! Envoi sur Cloudflare R2 une fois le téléchargement fini.
+//! Envoi sur storage.to une fois le téléchargement fini.
 
 use super::*;
 
@@ -25,22 +25,21 @@ impl Manager {
 
     async fn deliver(&self, key: &JobKey) -> anyhow::Result<()> {
         let settings = self.settings();
-        let r2 = R2::from_settings(&settings.r2)
-            .ok_or_else(|| anyhow!("Cloudflare R2 n'est pas configuré (voir Réglages)."))??;
+        let storage = StorageTo::from_settings(&settings.storage_to)?;
 
-        let (files, name, unique, category) = {
+        let (files, name) = {
             let data = self.data.lock();
             match key {
                 JobKey::Torrent(hash) => {
                     let entry = data.torrents.get(hash).context("téléchargement retiré")?;
-                    (None, entry.name.clone(), hash.clone(), entry.common.category.clone())
+                    (None, entry.name.clone())
                 }
                 JobKey::Direct(id) => {
                     let entry = data.directs.iter().find(|d| &d.id == id).context("téléchargement retiré")?;
                     let path = entry.final_path.clone().context("fichier téléchargé introuvable")?;
                     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(entry.total_bytes);
                     let rel = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    (Some(vec![(rel, path, size)]), entry.name.clone(), id.clone(), entry.common.category.clone())
+                    (Some(vec![(rel, path, size)]), entry.name.clone())
                 }
                 JobKey::Pending(_) => bail!("rien à envoyer"),
             }
@@ -50,9 +49,7 @@ impl Manager {
             (None, JobKey::Torrent(hash)) => self.engine.selected_file_paths(hash)?,
             _ => unreachable!(),
         };
-        let category_name = settings.category(category.as_deref()).map(|c| c.name.clone());
         let name = name.unwrap_or_else(|| "fichiers".into());
-        let prefix = r2::key_prefix(category_name.as_deref(), &name, &unique);
         let total: u64 = files.iter().map(|(_, _, size)| size).sum();
 
         self.with_common(key, |c| {
@@ -68,32 +65,63 @@ impl Manager {
         });
         self.save_now();
 
+        let http = self.http();
         let mut links = Vec::new();
+        // plusieurs fichiers : une collection, un seul lien pour le tout (en tête de liste)
+        let collection = if files.len() > 1 {
+            let collection = storage.create_collection(&http, files.len()).await?;
+            links.push(Link {
+                name: format!("{name} (tous les fichiers)"),
+                size: total,
+                key: collection.id.clone(),
+                url: collection.url.clone(),
+                kind: "collection".into(),
+                owner_token: collection.owner_token.clone(),
+            });
+            Some(collection)
+        } else {
+            None
+        };
+
         let mut done_before = 0u64;
         for (rel, path, size) in &files {
-            let object = format!("{prefix}/{rel}");
-            r2.upload(&self.http(), &object, path, |sent| {
-                self.with_common(key, |c| {
-                    if let Some(d) = c.delivery.as_mut() {
-                        d.sent_bytes = done_before + sent;
-                    }
-                });
-            })
-            .await
-            .with_context(|| format!("envoi de « {rel} »"))?;
-            done_before += size;
             let file_name =
                 Path::new(rel).file_name().map_or_else(|| rel.clone(), |n| n.to_string_lossy().into_owned());
-            links.push(Link { name: rel.clone(), size: *size, url: r2.link(&object, &file_name), key: object });
+            let shared = storage
+                .upload(&http, path, &file_name, collection.as_ref(), |sent| {
+                    self.with_common(key, |c| {
+                        if let Some(d) = c.delivery.as_mut() {
+                            d.sent_bytes = done_before + sent;
+                        }
+                    });
+                })
+                .await
+                .with_context(|| format!("envoi de « {rel} »"))?;
+            done_before += size;
+            links.push(Link {
+                name: rel.clone(),
+                size: *size,
+                key: shared.id,
+                url: shared.url,
+                kind: "file".into(),
+                owner_token: shared.owner_token,
+            });
+            // liens enregistrés au fil de l'eau : un arrêt en cours d'envoi permet quand même
+            // de supprimer ce qui est déjà en ligne
+            self.with_common(key, |c| {
+                if let Some(d) = c.delivery.as_mut() {
+                    d.links = links.clone();
+                }
+            });
         }
 
-        let expires_at = (!r2.has_public_links()).then(|| now_ms() + r2.link_expiry().as_millis() as u64);
+        let expires_at = Some(now_ms() + u64::from(settings.storage_to.expiry_days) * 86_400_000);
         self.with_common(key, |c| {
             c.delivery =
                 Some(Delivery { state: DeliveryState::Done, sent_bytes: total, total_bytes: total, links, expires_at });
         });
 
-        if settings.r2.delete_after_upload {
+        if settings.storage_to.delete_after_upload {
             match key {
                 JobKey::Torrent(hash) => {
                     self.engine
@@ -131,11 +159,11 @@ impl Manager {
         };
         match result {
             Ok(()) => {
-                tracing::info!("envoyé sur R2 : {name}");
-                self.notify(Notify::Done, "Envoyé sur Cloudflare R2", &name);
+                tracing::info!("envoyé sur storage.to : {name}");
+                self.notify(Notify::Done, "Envoyé sur storage.to", &name);
             }
             Err(err) => {
-                let message = format!("Envoi R2 : {err:#}");
+                let message = format!("Envoi en ligne : {err:#}");
                 tracing::error!("{name} : {message}");
                 self.with_common(key, |c| {
                     c.error = Some(message.clone());
@@ -143,7 +171,7 @@ impl Manager {
                         d.state = DeliveryState::Error;
                     }
                 });
-                self.notify(Notify::Error, "Envoi sur R2 impossible", &format!("{name} : {message}"));
+                self.notify(Notify::Error, "Envoi sur storage.to impossible", &format!("{name} : {message}"));
             }
         }
         self.save_now();

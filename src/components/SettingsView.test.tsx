@@ -18,7 +18,7 @@ const mocked = vi.mocked(invoke)
 function viewWith (settings: Partial<Settings>): View {
   return {
     settings: { ...(defaults as unknown as Settings), ...settings },
-    secrets: { r2AccessKeyId: false, r2SecretAccessKey: false },
+    secrets: { storageToToken: false },
     startWithWindows: false,
     magnetHandler: false,
     listenPort: 51413,

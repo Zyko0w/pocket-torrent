@@ -1,5 +1,5 @@
 //! Réglages de l'application, enregistrés en JSON dans le dossier de configuration.
-//! Les clés secrètes (R2, WireGuard) n'y sont pas : voir `secrets.rs`.
+//! Les secrets (jetons storage.to, WireGuard) n'y sont pas : voir `secrets.rs`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -49,7 +49,7 @@ pub struct Settings {
     pub magnet_previous: Option<String>,
     /// Ancien programme associé aux fichiers .torrent, remis en place si on désactive le nôtre.
     pub torrent_previous: Option<String>,
-    pub r2: R2Settings,
+    pub storage_to: StorageToSettings,
     pub vpn: VpnSettings,
     pub privacy: PrivacySettings,
     pub security: SecuritySettings,
@@ -301,26 +301,19 @@ impl Default for NotificationSettings {
     }
 }
 
+/// Envoi des fichiers terminés sur storage.to (voir storage_to.rs).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct R2Settings {
-    pub account_id: String,
-    pub bucket: String,
-    /// Domaine public du bucket (liens permanents) ; vide = liens signés temporaires.
-    pub public_url: String,
-    pub link_expiry_days: u32,
+pub struct StorageToSettings {
+    /// Durée de vie des liens, en jours (1 à 7 ; les fichiers disparaissent ensuite de storage.to).
+    pub expiry_days: u8,
+    /// Efface les fichiers du PC une fois envoyés. Désactivé par défaut : les liens expirent.
     pub delete_after_upload: bool,
 }
 
-impl Default for R2Settings {
+impl Default for StorageToSettings {
     fn default() -> Self {
-        Self {
-            account_id: String::new(),
-            bucket: String::new(),
-            public_url: String::new(),
-            link_expiry_days: 7,
-            delete_after_upload: true,
-        }
+        Self { expiry_days: 7, delete_after_upload: false }
     }
 }
 
@@ -348,7 +341,7 @@ impl Default for Settings {
             link_handler_asked: false,
             magnet_previous: None,
             torrent_previous: None,
-            r2: R2Settings::default(),
+            storage_to: StorageToSettings::default(),
             vpn: VpnSettings::default(),
             privacy: PrivacySettings::default(),
             security: SecuritySettings::default(),
@@ -396,10 +389,6 @@ impl Settings {
     /// Tous les dossiers où l'application range des fichiers (garde-fou des suppressions).
     pub fn download_roots(&self) -> Vec<PathBuf> {
         std::iter::once(self.download_dir.clone()).chain(self.categories.iter().map(|c| c.folder.clone())).collect()
-    }
-
-    pub fn r2_ready(&self) -> bool {
-        !self.r2.account_id.is_empty() && !self.r2.bucket.is_empty()
     }
 
     /// Nettoie les valeurs saisies puis les vérifie. Renvoie un message en français en cas d'erreur.
@@ -475,23 +464,9 @@ impl Settings {
             return Err("Places d'envoi par torrent : 500 maximum (0 = tous les pairs).".into());
         }
 
-        let r2 = &mut self.r2;
-        r2.account_id = r2.account_id.trim().to_owned();
-        r2.bucket = r2.bucket.trim().to_owned();
-        r2.public_url = r2.public_url.trim().trim_end_matches('/').to_owned();
-        if !r2.account_id.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return Err("R2 : l'identifiant de compte ne contient que des lettres et des chiffres.".into());
-        }
-        if !r2.bucket.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-            return Err("R2 : nom de bucket invalide (minuscules, chiffres et tirets).".into());
-        }
-        if !r2.public_url.is_empty()
-            && !(r2.public_url.starts_with("https://") && !r2.public_url.contains(char::is_whitespace))
-        {
-            return Err("R2 : l'URL publique doit commencer par https://, ou rester vide.".into());
-        }
-        if !(1..=7).contains(&r2.link_expiry_days) {
-            return Err("R2 : durée des liens entre 1 et 7 jours.".into());
+
+        if !(1..=7).contains(&self.storage_to.expiry_days) {
+            return Err("storage.to : durée des liens entre 1 et 7 jours.".into());
         }
 
         self.vpn.adapter = self.vpn.adapter.trim().to_owned();

@@ -1,5 +1,5 @@
 //! Informations propres à Pocket Torrent sur chaque téléchargement (catégorie, priorité,
-//! destination, raison d'une pause, envoi R2…), enregistrées dans `jobs.json`.
+//! destination, raison d'une pause, envoi en ligne…), enregistrées dans `jobs.json`.
 //! L'état des torrents eux-mêmes est gardé par librqbit.
 
 use std::collections::BTreeMap;
@@ -31,12 +31,25 @@ impl Priority {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Dest {
+    /// Garder sur le PC.
     #[default]
     Local,
-    R2,
+    /// Envoyer sur storage.to une fois terminé.
+    StorageTo,
+}
+
+/// Une destination inconnue ou retirée (« r2 » des anciennes versions) devient « garder sur le
+/// PC » : rien n'est envoyé en ligne sans que l'utilisateur l'ait choisi.
+impl<'de> Deserialize<'de> for Dest {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match String::deserialize(deserializer)?.as_str() {
+            "storageTo" => Dest::StorageTo,
+            _ => Dest::Local,
+        })
+    }
 }
 
 /// Pourquoi un téléchargement est arrêté.
@@ -88,7 +101,7 @@ pub enum DeliveryState {
     Error,
 }
 
-/// Envoi sur Cloudflare R2.
+/// Envoi en ligne (storage.to) une fois le téléchargement fini.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Delivery {
@@ -96,7 +109,7 @@ pub struct Delivery {
     pub sent_bytes: u64,
     pub total_bytes: u64,
     pub links: Vec<Link>,
-    /// Fin de validité des liens signés (absent avec une URL publique).
+    /// Fin de validité des liens (les fichiers disparaissent ensuite de storage.to).
     pub expires_at: Option<u64>,
 }
 
@@ -105,8 +118,20 @@ pub struct Delivery {
 pub struct Link {
     pub name: String,
     pub size: u64,
+    /// Identifiant storage.to du fichier ou de la collection.
     pub key: String,
     pub url: String,
+    /// « file » ou « collection » (tous les fichiers du téléchargement sous un seul lien).
+    #[serde(default = "file_kind")]
+    pub kind: String,
+    /// Preuve de propriété renvoyée par storage.to, pour supprimer le fichier. Jamais envoyée à
+    /// l'interface (retirée par `overview`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner_token: String,
+}
+
+fn file_kind() -> String {
+    "file".into()
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -114,13 +139,13 @@ pub struct Link {
 pub struct TorrentEntry {
     #[serde(flatten)]
     pub common: Common,
-    /// Copie des infos du torrent, utile une fois retiré du moteur (après un envoi R2).
+    /// Copie des infos du torrent, utile une fois retiré du moteur (après un envoi en ligne).
     pub name: Option<String>,
     pub wanted_bytes: u64,
     pub file_count: usize,
     pub selected_files: usize,
     pub folder: Option<PathBuf>,
-    /// Faux une fois le torrent retiré du moteur (fichiers envoyés sur R2 puis effacés).
+    /// Faux une fois le torrent retiré du moteur (fichiers envoyés en ligne puis effacés).
     pub removed: bool,
     /// Créé avec « Partager en torrent » depuis ce téléchargement direct.
     pub shared_from: Option<String>,
@@ -229,5 +254,19 @@ impl StoreData {
 
     pub fn pending_mut(&mut self, id: &str) -> Option<&mut PendingTorrent> {
         self.pending.iter_mut().find(|p| p.id == id)
+    }
+}
+
+#[cfg(test)]
+mod dest_tests {
+    use super::Dest;
+
+    #[test]
+    fn removed_destinations_fall_back_to_the_pc() {
+        let parse = |text: &str| serde_json::from_str::<Dest>(text).unwrap();
+        assert_eq!(parse("\"storageTo\""), Dest::StorageTo);
+        assert_eq!(parse("\"local\""), Dest::Local);
+        assert_eq!(parse("\"r2\""), Dest::Local, "ancienne destination R2 : plus aucun envoi");
+        assert_eq!(serde_json::to_string(&Dest::StorageTo).unwrap(), "\"storageTo\"");
     }
 }

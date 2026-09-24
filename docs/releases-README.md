@@ -34,7 +34,7 @@
 - Mode jeu : ralentissement ou pause automatique au lancement d'un jeu.
 - Arrêt du PC à la fin des téléchargements.
 - Démarrage avec Windows, association des liens magnet et `.torrent`, notifications.
-- Envoi automatique vers Cloudflare R2 (optionnel).
+- Envoi automatique sur storage.to une fois terminé, avec lien de partage (optionnel, sans compte).
 - Statistiques, état des trackers, export et import de la liste de téléchargements.
 
 **Moteur**
@@ -76,7 +76,7 @@ Pocket Torrent n'établit que les connexions suivantes :
 - GitHub, pour la recherche de mises à jour (désactivable) ;
 - routeur, pour l'ouverture du port (UPnP, NAT-PMP ; désactivée avec le VPN et en mode renforcé) ;
 - serveur VPN, pour la redirection de port (si activée) ;
-- Cloudflare R2 (si configuré).
+- storage.to, pour les téléchargements marqués « Envoyer sur storage.to ».
 
 ## Désinstallation
 

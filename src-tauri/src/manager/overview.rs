@@ -51,7 +51,6 @@ impl Manager {
                 .iter()
                 .map(|c| CategoryView { id: c.id.clone(), name: c.name.clone() })
                 .collect(),
-            r2_ready: settings.r2_ready() && self.r2_keys_set.load(Ordering::Relaxed),
             vpn: self.vpn_view(&settings),
             power: self.power_view(),
         }
@@ -83,7 +82,11 @@ fn base_job(id: String, kind: &'static str, common: &Common) -> JobView {
         queue_position: None,
         added_at: common.added_at,
         finished_at: common.finished_at,
-        delivery: common.delivery.clone(),
+        // les preuves de propriété storage.to restent côté Rust
+        delivery: common.delivery.clone().map(|mut delivery| {
+            delivery.links.iter_mut().for_each(|link| link.owner_token.clear());
+            delivery
+        }),
         limit_kbps: 0,
         in_engine: false,
         can_share: false,
@@ -201,5 +204,31 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{bytes} o")
     } else {
         format!("{} {}", format!("{value:.1}").replace('.', ","), units[unit])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn storage_owner_tokens_never_reach_the_interface() {
+        let link = Link {
+            name: "Film.mkv".into(),
+            size: 10,
+            key: "FQxyz1234".into(),
+            url: "https://storage.to/FQxyz1234".into(),
+            kind: "file".into(),
+            owner_token: "owner_v1_secret".into(),
+        };
+        let common = Common {
+            delivery: Some(Delivery { state: DeliveryState::Done, sent_bytes: 10, total_bytes: 10, links: vec![link], expires_at: None }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&base_job("t:x".into(), "torrent", &common)).unwrap();
+        assert!(json.contains("storage.to/FQxyz1234"));
+        assert!(!json.contains("owner_v1_secret") && !json.contains("ownerToken"), "{json}");
+        // le jeton reste bien enregistré côté Rust (suppression possible plus tard)
+        assert!(serde_json::to_string(&common).unwrap().contains("owner_v1_secret"));
     }
 }

@@ -1,10 +1,12 @@
-//! Clés secrètes (Cloudflare R2) rangées dans le Gestionnaire d'identification
-//! de Windows, jamais dans les fichiers de réglages ni renvoyées à l'interface.
+//! Secrets (jetons storage.to, configuration WireGuard) rangés dans le Gestionnaire
+//! d'identification de Windows, jamais dans les fichiers de réglages ni renvoyés à l'interface.
 
 #[derive(Clone, Copy, Debug)]
 pub enum Secret {
-    R2AccessKeyId,
-    R2SecretAccessKey,
+    /// Jeton de compte storage.to (facultatif : lève les limites des envois anonymes).
+    StorageToToken,
+    /// Jeton de visiteur storage.to : identifie les envois anonymes de ce PC.
+    StorageToVisitor,
     /// Fichier de configuration WireGuard (contient la clé privée du tunnel).
     WireguardConfig,
 }
@@ -13,9 +15,16 @@ impl Secret {
     fn target(self) -> &'static str {
         match self {
             Secret::WireguardConfig => "TorrentCloud/wireguard-conf",
-            Secret::R2AccessKeyId => "TorrentCloud/r2-access-key-id",
-            Secret::R2SecretAccessKey => "TorrentCloud/r2-secret-access-key",
+            Secret::StorageToToken => "TorrentCloud/storage-to-token",
+            Secret::StorageToVisitor => "TorrentCloud/storage-to-visitor",
         }
+    }
+}
+
+/// Efface les clés Cloudflare R2 laissées par les versions qui géraient R2 (retiré en 0.2.1).
+pub fn forget_legacy() {
+    for target in ["TorrentCloud/r2-access-key-id", "TorrentCloud/r2-secret-access-key"] {
+        imp::delete(target);
     }
 }
 

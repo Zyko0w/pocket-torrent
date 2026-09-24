@@ -175,13 +175,13 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
   const changeSort = (key: SortKey) => { setSort(key); saveSort(key) }
   const categoryName = category ? categoryNames.get(category) : null
 
-  const confirmDelete = async (deleteFiles: boolean, deleteR2: boolean, deleteSource: boolean) => {
+  const confirmDelete = async (deleteFiles: boolean, deleteOnline: boolean, deleteSource: boolean) => {
     if (!deleting) return
     const target = deleting
     setDeleting(null)
     try {
-      await api.remove(target.id, deleteFiles, deleteR2, deleteSource)
-      toast(deleteFiles || deleteR2 || deleteSource ? 'Téléchargement et fichiers supprimés' : 'Retiré de la liste')
+      await api.remove(target.id, deleteFiles, deleteOnline, deleteSource)
+      toast(deleteFiles || deleteOnline || deleteSource ? 'Téléchargement et fichiers supprimés' : 'Retiré de la liste')
       refresh()
     } catch (err) {
       toast(errorMessage(err))
@@ -254,7 +254,6 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
           onPrefillUsed={onPrefillUsed}
           categories={categories}
           defaultCategory={category}
-          r2Ready={overview?.r2Ready ?? false}
           onChooseFiles={setChoosing}
           onAdded={onAdded}
         />

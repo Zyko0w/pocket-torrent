@@ -40,13 +40,6 @@
     "maxActive": 3,
     "slowThresholdKbps": 10
   },
-  "r2": {
-    "accountId": "",
-    "bucket": "",
-    "deleteAfterUpload": true,
-    "linkExpiryDays": 7,
-    "publicUrl": ""
-  },
   "scanDownloads": false,
   "schedule": {
     "days": [
@@ -84,6 +77,10 @@
   "seeding": {
     "ratioLimit": 0.0,
     "timeLimitMinutes": 0
+  },
+  "storageTo": {
+    "deleteAfterUpload": false,
+    "expiryDays": 7
   },
   "torrentPort": 0,
   "torrentPrevious": null,

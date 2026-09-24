@@ -170,12 +170,12 @@ impl Manager {
     }
 
     /// Retire un téléchargement (et l'arrête). `delete_files` : fichiers téléchargés ;
-    /// `delete_r2` : copies sur R2 ; `delete_source` : fichier .torrent local d'origine.
+    /// `delete_online` : copies sur storage.to ; `delete_source` : fichier .torrent local d'origine.
     pub async fn delete(
         self: &Arc<Self>,
         id: &str,
         delete_files: bool,
-        delete_r2: bool,
+        delete_online: bool,
         delete_source: bool,
     ) -> anyhow::Result<()> {
         let key = JobKey::parse(id)?;
@@ -187,16 +187,22 @@ impl Manager {
         if let Some(task) = self.tasks.lock().remove(&format!("upload:{}", key.id())) {
             task.abort();
         }
-        if delete_r2 {
-            let keys: Vec<String> = self
-                .with_common(&key, |c| c.delivery.as_ref().map(|d| d.links.iter().map(|l| l.key.clone()).collect()))
-                .flatten()
-                .unwrap_or_default();
-            if !keys.is_empty() {
-                let r2 = R2::from_settings(&self.settings().r2).ok_or_else(|| {
-                    anyhow!("Cloudflare R2 n'est plus configuré : fichiers en ligne non supprimés.")
-                })??;
-                r2.delete(&self.http(), &keys).await.context("suppression sur R2 impossible")?;
+        if delete_online {
+            let links = self.with_common(&key, |c| c.delivery.as_ref().map(|d| d.links.clone())).flatten().unwrap_or_default();
+            if !links.is_empty() {
+                let storage = StorageTo::from_settings(&self.settings().storage_to)?;
+                let http = self.http();
+                // une collection emporte ses fichiers : inutile de les supprimer un par un
+                let collection = links.iter().any(|l| l.kind == "collection");
+                for link in links.iter().filter(|l| !collection || l.kind == "collection") {
+                    if link.owner_token.is_empty() {
+                        continue;
+                    }
+                    storage
+                        .delete(&http, &link.kind, &link.key, &link.owner_token)
+                        .await
+                        .with_context(|| format!("suppression de « {} » sur storage.to impossible", link.name))?;
+                }
             }
         }
 
@@ -219,7 +225,7 @@ impl Manager {
                 self.stop_direct(id);
                 let entry = self.data.lock().directs.iter().find(|d| &d.id == id).cloned();
                 if let (true, Some(entry)) = (delete_files, entry) {
-                    if entry.common.dest == Dest::R2 {
+                    if entry.common.dest == Dest::StorageTo {
                         self.safe_remove(&entry.folder);
                     }
                     for path in [entry.part_path, entry.final_path].into_iter().flatten() {

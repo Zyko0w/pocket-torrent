@@ -8,9 +8,9 @@ export type JobStatus =
 export type Hold = 'user' | 'queue' | 'game' | 'disk' | 'vpn' | 'seeded'
 export type VpnMode = 'off' | 'adapter' | 'wireguard'
 export type Priority = 'high' | 'normal' | 'low'
-export type Dest = 'local' | 'r2'
+export type Dest = 'local' | 'storageTo'
 
-export interface DeliveryLink { name: string; size: number; key: string; url: string }
+export interface DeliveryLink { name: string; size: number; key: string; url: string; kind: 'file' | 'collection' }
 
 export interface Delivery {
   state: 'uploading' | 'done' | 'error'
@@ -73,7 +73,6 @@ export interface Overview {
   upSpeed: number
   game: { active: boolean; process: string | null; mode: GameModeSwitch; action: GameAction }
   categories: { id: string; name: string }[]
-  r2Ready: boolean
   vpn: VpnState
   /** Arrêt du PC à la fin : option active, et heure prévue (ms) si l'arrêt est programmé. */
   power: { shutdownWhenDone: boolean; shutdownAt: number | null }
@@ -173,7 +172,7 @@ export interface Settings {
   checkUpdates: boolean
   magnetPrevious: string | null
   torrentPrevious: string | null
-  r2: { accountId: string; bucket: string; publicUrl: string; linkExpiryDays: number; deleteAfterUpload: boolean }
+  storageTo: { expiryDays: number; deleteAfterUpload: boolean }
   vpn: { mode: VpnMode; adapter: string; portForwarding: boolean }
   privacy: { encryption: 'off' | 'prefer' | 'require'; hideAnnounces: boolean; hardenedMode: boolean }
   security: { excludedExtensions: string[] }
@@ -182,7 +181,7 @@ export interface Settings {
 
 export interface SettingsView {
   settings: Settings
-  secrets: { r2AccessKeyId: boolean; r2SecretAccessKey: boolean }
+  secrets: { storageToToken: boolean }
   startWithWindows: boolean
   magnetHandler: boolean
   listenPort: number | null
@@ -194,8 +193,7 @@ export interface SettingsView {
 
 /** `null` : clé inchangée ; chaîne vide : clé effacée. */
 export interface SecretsInput {
-  r2AccessKeyId: string | null
-  r2SecretAccessKey: string | null
+  storageToToken: string | null
 }
 
 export interface AddOptions {
@@ -226,8 +224,8 @@ export const api = {
   resumeAll: () => invoke<number>('resume_all'),
   setPriority: (id: string, priority: Priority) => invoke<void>('set_job_priority', { id, priority }),
   setLimit: (id: string, limitKbps: number) => invoke<void>('set_job_limit', { id, limitKbps }),
-  remove: (id: string, deleteFiles: boolean, deleteR2: boolean, deleteSource: boolean) =>
-    invoke<void>('delete_job', { id, deleteFiles, deleteR2, deleteSource }),
+  remove: (id: string, deleteFiles: boolean, deleteOnline: boolean, deleteSource: boolean) =>
+    invoke<void>('delete_job', { id, deleteFiles, deleteOnline, deleteSource }),
   clearFinished: () => invoke<number>('clear_finished'),
   files: (id: string) => invoke<TorrentFile[]>('job_files', { id }),
   setFiles: (id: string, files: number[]) => invoke<void>('set_job_files', { id, files }),
@@ -253,7 +251,8 @@ export const api = {
   saveSettings: (input: { settings: Settings; secrets: SecretsInput; startWithWindows: boolean; magnetHandler: boolean }) =>
     invoke<SettingsView>('save_settings', { input }),
   testNotification: () => invoke<void>('test_notification'),
-  testR2: () => invoke<void>('test_r2'),
+  /** Renvoie une phrase sur l'état du compte ou le quota restant. */
+  testStorageTo: () => invoke<string>('test_storage_to'),
   performanceSnapshot: () => invoke<PerfSnapshot>('performance_snapshot'),
   exportPerformanceSnapshot: (path: string) => invoke<void>('export_performance_snapshot', { path }),
   readLog: (maxLines: number) => invoke<string>('read_log', { maxLines }),

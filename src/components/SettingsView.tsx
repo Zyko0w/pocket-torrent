@@ -18,7 +18,7 @@ import { BlocklistSection, DangerousFilesSection, PrivacySection } from './setti
 import { NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
 import { AboutPanel } from './AboutPanel'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
-import { R2Section } from './settings/R2Section'
+import { StorageToSection } from './settings/StorageToSection'
 
 export type SettingsTab = 'general' | 'transfers' | 'network' | 'privacy' | 'cloud' | 'data' | 'diagnostics'
 
@@ -27,12 +27,12 @@ export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode; a
   { id: 'transfers', label: 'Vitesse et file', icon: <Gauge size={16} /> },
   { id: 'network', label: 'VPN et réseau', icon: <WifiHigh size={16} /> },
   { id: 'privacy', label: 'Confidentialité', icon: <ShieldCheck size={16} /> },
-  { id: 'cloud', label: 'Cloudflare R2', icon: <Cloud size={16} /> },
+  { id: 'cloud', label: 'Envoi en ligne', icon: <Cloud size={16} /> },
   { id: 'data', label: 'Données', icon: <ChartBar size={16} /> },
   { id: 'diagnostics', label: 'Diagnostic', icon: <Stethoscope size={16} />, advanced: true }
 ]
 
-const NO_SECRET_CHANGE: SecretsInput = { r2AccessKeyId: null, r2SecretAccessKey: null }
+const NO_SECRET_CHANGE: SecretsInput = { storageToToken: null }
 
 /** Liste en texte libre (une valeur par ligne ou séparées par des virgules). */
 const toList = (text: string) => text.split(/[\n,]/).map((p) => p.trim()).filter(Boolean)
@@ -195,7 +195,7 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
         {!advanced && <HiddenAdvanced names={['Liste de blocage d’IP', 'Fichiers dangereux']} onShow={() => setAdvanced(true)} />}
       </>
     ),
-    cloud: <R2Section {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
+    cloud: <StorageToSection {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
     data: (
       <>
         <Section id='s-stats' title='Statistiques' intro='Tout ce qui a été reçu et envoyé (torrents et liens directs), et le ratio global.'>
