@@ -438,6 +438,7 @@ input[type='radio']:checked::after { content: ''; position: absolute; inset: 3.5
 .save-bar.dirty { border-color: var(--accent); transform: translateY(-2px); }
 .save-status { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; color: var(--text-dim); }
 .save-status.ok { color: var(--success); }
+.save-note { color: var(--warning); font-family: var(--font); font-size: 12px; letter-spacing: 0; text-transform: none; }
 .save-status.error { color: var(--danger); }
 .save-status.dirty { color: var(--accent-text); }
 .save-status.dirty::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }

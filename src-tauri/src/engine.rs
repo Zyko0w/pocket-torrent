@@ -340,6 +340,37 @@ async fn create_session(
         .context("impossible de démarrer le moteur torrent")
 }
 
+/// Ce dont le moteur dépend dans les réglages, en valeurs effectives : il n'est redémarré
+/// (téléchargements coupés quelques secondes) que si ceci change. Ainsi, cocher « mode discret »
+/// quand la confidentialité renforcée l'inclut déjà, ou modifier la source d'une liste de
+/// blocage désactivée, ne redémarre rien. Même règle côté interface : `src/engineConfig.ts`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EngineConfig {
+    port: u16,
+    utp: bool,
+    peer_limit: u32,
+    upload_slots: u32,
+    encryption: EncryptionLevel,
+    discreet: bool,
+    hardened: bool,
+    blocklist: Option<String>,
+}
+
+impl EngineConfig {
+    pub fn of(settings: &Settings) -> Self {
+        Self {
+            port: settings.torrent_port,
+            utp: settings.utp_enabled,
+            peer_limit: settings.max_peers_per_torrent,
+            upload_slots: settings.upload_slots,
+            encryption: settings.privacy.encryption,
+            discreet: settings.privacy.hide_announces || settings.privacy.hardened_mode,
+            hardened: settings.privacy.hardened_mode,
+            blocklist: blocklist_url(settings),
+        }
+    }
+}
+
 /// Chemin local ou URL http(s)/file pour `SessionOptions::blocklist_url` (§9.7). Efficacité
 /// faible en pratique (voir l'avertissement affiché dans les réglages), gardée à la demande
 /// du plan d'upgrade.
@@ -1088,6 +1119,26 @@ mod sandbox_tests {
         assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 1);
         assert!(format!("{err:#}").contains("Aucun pair n'a transmis"), "{err:#}");
         engine.stop().await;
+    }
+
+    #[test]
+    fn engine_restarts_only_for_effective_changes() {
+        let base = Settings::default();
+        let same = |edit: &dyn Fn(&mut Settings)| {
+            let mut next = base.clone();
+            edit(&mut next);
+            EngineConfig::of(&base) == EngineConfig::of(&next)
+        };
+        assert!(same(&|s| s.blocklist.source = "C:/listes/p2p.txt".into()), "liste désactivée");
+        assert!(same(&|s| s.limits.down_kbps = 500), "limites appliquées sans redémarrage");
+        assert!(!same(&|s| s.privacy.hide_announces = true));
+        assert!(!same(&|s| s.torrent_port = 51413));
+
+        let mut hardened = base.clone();
+        hardened.privacy.hardened_mode = true;
+        let mut both = hardened.clone();
+        both.privacy.hide_announces = true;
+        assert_eq!(EngineConfig::of(&hardened), EngineConfig::of(&both), "déjà inclus dans le mode renforcé");
     }
 
     #[test]

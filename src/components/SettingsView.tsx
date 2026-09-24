@@ -7,6 +7,7 @@ import {
 } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { api, errorMessage, type SecretsInput, type Settings, type SettingsView as View } from '../api'
+import { restartsEngine } from '../engineConfig'
 import { useToast } from './Toast'
 import { VpnSection } from './VpnSection'
 import { TrafficStatsPanel } from './TrafficStatsPanel'
@@ -92,6 +93,7 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
   const update = (patch: Partial<Settings>) => edit({ settings: { ...settings, ...patch } })
   const section = { settings, update }
   const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(view))
+  const restarting = dirty && restartsEngine(view.settings, settings)
 
   const showError = (message: string) => {
     setError(message)
@@ -245,6 +247,11 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
       <div className={`save-bar${dirty ? ' dirty' : ''}`}>
         <span className={`save-status ${dirty && !status.kind ? 'dirty' : status.kind}`} role='status'>
           {status.text || (dirty ? 'Modifications non enregistrées' : 'Tout est enregistré')}
+          {restarting && !status.kind && (
+            <small className='save-note' title='Port, µTP, pairs, places d’envoi, chiffrement, mode discret, liste de blocage ou VPN'>
+              · redémarre le moteur : téléchargements coupés quelques secondes
+            </small>
+          )}
         </span>
         {dirty && (
           <button type='button' className='btn btn-ghost' onClick={discard} disabled={saving}>Annuler</button>

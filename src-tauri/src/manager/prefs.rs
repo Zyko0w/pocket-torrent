@@ -61,13 +61,7 @@ impl Manager {
         }
         if vpn_changed {
             self.check_vpn().await?;
-        } else if next.torrent_port != current.torrent_port
-            || next.utp_enabled != current.utp_enabled
-            || next.max_peers_per_torrent != current.max_peers_per_torrent
-            || next.upload_slots != current.upload_slots
-            || next.privacy != current.privacy
-            || next.blocklist != current.blocklist
-        {
+        } else if crate::engine::EngineConfig::of(&next) != crate::engine::EngineConfig::of(&current) {
             // nouveau port, µTP, plafond de pairs, places d'envoi, chiffrement ou liste de blocage : le moteur repart
             let _switching = self.vpn_switching.lock().await;
             self.engine.restart(&next, self.engine.binding(), &self.network()).await?;
