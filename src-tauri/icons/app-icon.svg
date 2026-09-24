@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Pocket Torrent : une poche (le téléchargement « rangé dans la poche ») et une flèche vers le bas.
+       Source unique de toutes les icônes : `npx tauri icon src-tauri/icons/app-icon.svg`. -->
+  <rect width="1024" height="1024" rx="232" fill="#8b5cf6"/>
+  <path d="M300 268H724Q772 268 772 316V548Q772 626 708 674L560 786Q512 822 464 786L316 674Q252 626 252 548V316Q252 268 300 268Z" fill="#fff"/>
+  <path d="M308 352H716" stroke="#8b5cf6" stroke-width="18" stroke-linecap="round" stroke-dasharray="34 30" opacity="0.55"/>
+  <path d="M512 432V632M420 548L512 640L604 548" fill="none" stroke="#8b5cf6" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

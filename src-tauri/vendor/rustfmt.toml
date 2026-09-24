@@ -1,0 +1,2 @@
+# Bibliothèques copiées : style rustfmt par défaut, comme en amont (sans hériter du
+# rustfmt.toml de l application, qui les reformaterait entièrement).

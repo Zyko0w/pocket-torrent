@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pocket Torrent",
+  "version": "0.1.2",
+  "identifier": "com.nans.torrentcloud",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build && cargo build --release -p pocket-torrent-tunnel --manifest-path src-tauri/Cargo.toml",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "dragDropEnabled": false,
+        "title": "Pocket Torrent",
+        "width": 1120,
+        "height": 780,
+        "minWidth": 760,
+        "minHeight": 540,
+        "center": true,
+        "visible": false,
+        "backgroundColor": "#09090B"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "resources": {
+      "target/release/pocket-torrent-tunnel.exe": "pocket-torrent-tunnel.exe",
+      "vendor/wireguard-nt/wireguard-nt/bin/amd64/wireguard.dll": "wireguard.dll"
+    },
+    "shortDescription": "Torrents et liens directs, avec VPN",
+    "copyright": "Nans",
+    "windows": {
+      "nsis": { "languages": ["French"], "installMode": "currentUser", "installerHooks": "windows/hooks.nsh" }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDQjVEMTVGMjU5ODczNUQKUldSZGM1Z2xYOUcxL0owaFpQM1BBcE4ydTM3MUxiaGdpOGtQTTJ3RFovNmNhaW5TbUhtYUtzaloK",
+      "endpoints": ["https://github.com/Zyko0w/pocket-torrent-releases/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  }
+}

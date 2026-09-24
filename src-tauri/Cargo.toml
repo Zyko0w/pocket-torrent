@@ -1,0 +1,95 @@
+[package]
+name = "pocket-torrent"
+version = "0.1.2"
+description = "Pocket Torrent : torrents et liens directs, avec VPN"
+authors = ["Nans"]
+edition = "2024"
+rust-version = "1.88"
+
+[lib]
+name = "pocket_torrent_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+
+librqbit = { version = "9.0.1", default-features = false, features = ["rust-tls"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+bytes = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+# journal consultable et exportable (§5) : la console n'existe pas en mode fenêtré (--cache)
+tracing-appender = "0.2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json", "socks"] }
+futures = "0.3"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+sysinfo = "0.39"
+# planificateur de limites (§5) : heure et jour locaux, sans base de fuseaux horaires
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+parking_lot = "0.12"
+rusty-s3 = "0.10"
+percent-encoding = "2"
+# dossiers surveillés : ReadDirectoryChangesW sous Windows, pas de scrutation périodique
+notify = "8"
+# serveur de streaming local (§7.6) : Range géré par tower-http, pas réimplémenté à la main
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "query"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.6", default-features = false, features = ["fs"] }
+# mêmes versions que librqbit (copies corrigées) : résolveur DNS global et trackers HTTPS seuls
+librqbit-dualstack-sockets = "0.7"
+librqbit-tracker-comms = "9.0.1"
+webpki-root-certs = "1"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+pocket-torrent-tunnel = { path = "tunnel" }
+winreg = "0.56"
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Networking_WinSock",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Security_Credentials",
+  "Win32_Storage_FileSystem",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Power",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[workspace]
+members = ["tunnel"]
+exclude = ["vendor"]
+
+# Copie locale de librqbit (vendor/librqbit, voir vendor/PATCHES.md) pour la liaison
+# à l'interface VPN sous Windows, le correctif uTP et le chiffrement MSE.
+[patch.crates-io]
+librqbit = { path = "vendor/librqbit" }
+librqbit-dualstack-sockets = { path = "vendor/librqbit-dualstack-sockets" }
+librqbit-tracker-comms = { path = "vendor/librqbit-tracker-comms" }
+librqbit-dht = { path = "vendor/librqbit-dht" }
+librqbit-core = { path = "vendor/librqbit-core" }
+librqbit-bencode = { path = "vendor/librqbit-bencode" }
+librqbit-peer-protocol = { path = "vendor/librqbit-peer-protocol" }
+librqbit-upnp = { path = "vendor/librqbit-upnp" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
