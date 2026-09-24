@@ -19,7 +19,6 @@ mod system;
 mod tray;
 #[cfg(windows)]
 mod tunnel;
-mod watcher;
 
 use std::sync::Arc;
 

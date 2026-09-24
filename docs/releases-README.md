@@ -35,7 +35,7 @@
 - **Choix des fichiers** avant et pendant le téléchargement, avec un ordre de priorité par fichier.
 - **Lecture pendant le téléchargement** : une vidéo s'ouvre dans ton lecteur (VLC, mpv…) sans attendre la fin.
 - **File d'attente** avec priorités (haute, normale, basse), nombre de téléchargements simultanés et « démarrer maintenant ».
-- **Catégories** avec leur propre dossier, **dossiers surveillés** (un .torrent déposé est ajouté tout seul).
+- **Catégories** avec leur propre dossier.
 - **Limites de vitesse**, **planificateur** (autres limites la nuit, par exemple), limite par lien direct.
 - **Partage** : ratio et durée maximum, création d'un torrent à partir d'un fichier.
 

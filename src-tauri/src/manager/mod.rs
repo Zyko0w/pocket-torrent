@@ -26,7 +26,6 @@ use crate::store::{
     now_ms,
 };
 use crate::system::{self, ProcessWatcher};
-use crate::watcher::{self, WatcherHandle};
 use crate::{dns, netif};
 
 mod actions;
@@ -291,8 +290,6 @@ pub struct Manager {
     tunnel_health_at: Mutex<Option<Instant>>,
     /// Vrai si Windows a reçu l'ordre de ne pas se mettre en veille (transfert actif).
     sleep_blocked: AtomicBool,
-    /// Surveillance des dossiers configurés dans `Settings::watched_folders`.
-    watchers: Mutex<Vec<WatcherHandle>>,
     /// Derniers compteurs d'octets lus, pour les statistiques cumulées.
     traffic: Mutex<stats::TrafficSample>,
     /// « Éteindre le PC quand tout est terminé » (session en cours seulement).
@@ -402,7 +399,6 @@ impl Manager {
             vpn_since: Mutex::new(Some(Instant::now())),
             tunnel_health_at: Mutex::new(None),
             sleep_blocked: AtomicBool::new(false),
-            watchers: Mutex::new(Vec::new()),
             r2_keys_set: AtomicBool::new(r2_keys_set()),
             closing: AtomicBool::new(false),
         });
@@ -429,16 +425,8 @@ impl Manager {
             manager.start_delivery(key);
         }
         manager.apply_limits();
-        manager.refresh_watchers();
         manager.spawn_loop();
         Ok(manager)
-    }
-
-    /// Redémarre la surveillance des dossiers d'après les réglages actuels.
-    fn refresh_watchers(self: &Arc<Self>) {
-        let folders = self.settings().watched_folders;
-        let handles = folders.into_iter().filter_map(|folder| watcher::watch(self.clone(), folder)).collect();
-        *self.watchers.lock() = handles;
     }
 
     /// Empêche (ou autorise de nouveau) la mise en veille de Windows selon les réglages

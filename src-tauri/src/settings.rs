@@ -43,7 +43,6 @@ pub struct Settings {
     /// jamais l'installer d'office. Seule connexion de l'appli qui ne concerne pas un transfert.
     pub check_updates: bool,
     pub hooks: HooksSettings,
-    pub watched_folders: Vec<WatchedFolder>,
     /// Ancien programme associé aux liens magnet, remis en place si on désactive le nôtre.
     pub magnet_previous: Option<String>,
     /// Ancien programme associé aux fichiers .torrent, remis en place si on désactive le nôtre.
@@ -160,16 +159,6 @@ impl VpnSettings {
 pub struct HooksSettings {
     pub on_add: String,
     pub on_done: String,
-}
-
-/// Dossier surveillé : tout fichier `.torrent` qui y apparaît est ajouté automatiquement,
-/// puis déplacé dans un sous-dossier `.traités` pour ne pas être repris deux fois.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct WatchedFolder {
-    pub path: PathBuf,
-    /// Catégorie appliquée aux torrents trouvés ici, ou `None` pour le dossier par défaut.
-    pub category: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -363,7 +352,6 @@ impl Default for Settings {
             scan_downloads: false,
             check_updates: true,
             hooks: HooksSettings::default(),
-            watched_folders: Vec::new(),
             magnet_previous: None,
             torrent_previous: None,
             r2: R2Settings::default(),
@@ -555,20 +543,6 @@ impl Settings {
         }
         if self.blocklist.source.chars().count() > 2000 {
             return Err("Liste de blocage : adresse trop longue.".into());
-        }
-
-        if self.watched_folders.len() > 20 {
-            return Err("Dossiers surveillés : 20 maximum.".into());
-        }
-        let mut watched_paths = HashSet::new();
-        for (i, folder) in self.watched_folders.iter().enumerate() {
-            absolute(&folder.path, &format!("Dossier surveillé {}", i + 1))?;
-            if !watched_paths.insert(folder.path.clone()) {
-                return Err(format!("Dossier surveillé en double : {}", folder.path.display()));
-            }
-            if folder.category.as_deref().is_some_and(|id| self.category(Some(id)).is_none()) {
-                return Err(format!("Dossier surveillé « {} » : catégorie inconnue.", folder.path.display()));
-            }
         }
         Ok(())
     }

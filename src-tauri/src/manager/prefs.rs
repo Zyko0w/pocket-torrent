@@ -67,9 +67,6 @@ impl Manager {
             self.engine.restart(&next, self.engine.binding(), &self.network()).await?;
             self.respawn_pending();
         }
-        if next.watched_folders != current.watched_folders {
-            self.refresh_watchers();
-        }
         self.game.lock().checked = false;
         self.apply_limits();
         self.check_game().await;

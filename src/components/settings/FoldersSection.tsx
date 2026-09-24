@@ -1,4 +1,4 @@
-// Dossiers de téléchargement, catégories et dossiers surveillés.
+// Dossiers de téléchargement et catégories.
 import { FolderOpen, Plus, Trash } from '@phosphor-icons/react'
 import type { Settings } from '../../api'
 import { Section, pickFolder, type SectionProps } from './fields'
@@ -40,51 +40,6 @@ export function FoldersSection ({ settings, update }: SectionProps) {
           <Plus size={14} /> Ajouter une catégorie
         </button>
       </div>
-    </Section>
-  )
-}
-
-export function WatchedFoldersSection ({ settings, update }: SectionProps) {
-  const setWatched = (index: number, patch: Partial<Settings['watchedFolders'][number]>) =>
-    update({ watchedFolders: settings.watchedFolders.map((f, i) => (i === index ? { ...f, ...patch } : f)) })
-
-  return (
-    <Section id='s-watched' title='Dossiers surveillés' intro='Tout fichier .torrent déposé ici est ajouté automatiquement, puis rangé dans un sous-dossier « .traités ».'>
-      {settings.watchedFolders.length === 0 && <p className='help' style={{ marginTop: 0 }}>Aucun dossier surveillé.</p>}
-      <ul className='category-list'>
-        {settings.watchedFolders.map((folder, index) => (
-          <li key={index} className='category-row'>
-            <input
-              className='input' aria-label={`Dossier surveillé ${index + 1}`} placeholder='Dossier'
-              value={folder.path}
-              onChange={(e) => setWatched(index, { path: e.target.value })}
-            />
-            <select
-              aria-label={`Catégorie du dossier surveillé ${index + 1}`}
-              value={folder.category ?? ''}
-              onChange={(e) => setWatched(index, { category: e.target.value || null })}
-            >
-              <option value=''>Dossier par défaut</option>
-              {settings.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button
-              type='button' className='icon-btn' title='Choisir le dossier' aria-label='Choisir le dossier'
-              onClick={async () => { const f = await pickFolder(folder.path); if (f) setWatched(index, { path: f }) }}
-            >
-              <FolderOpen size={18} />
-            </button>
-            <button
-              type='button' className='icon-btn danger' title='Retirer' aria-label='Retirer'
-              onClick={() => update({ watchedFolders: settings.watchedFolders.filter((_, i) => i !== index) })}
-            >
-              <Trash size={18} />
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button type='button' className='btn btn-ghost btn-sm' onClick={() => update({ watchedFolders: [...settings.watchedFolders, { path: '', category: null }] })}>
-        <Plus size={14} /> Ajouter un dossier
-      </button>
     </Section>
   )
 }

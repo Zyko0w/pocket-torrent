@@ -172,7 +172,6 @@ export interface Settings {
   scanDownloads: boolean
   checkUpdates: boolean
   hooks: { onAdd: string; onDone: string }
-  watchedFolders: { path: string; category: string | null }[]
   magnetPrevious: string | null
   torrentPrevious: string | null
   r2: { accountId: string; bucket: string; publicUrl: string; linkExpiryDays: number; deleteAfterUpload: boolean }

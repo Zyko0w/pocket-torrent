@@ -13,7 +13,7 @@ import { VpnSection } from './VpnSection'
 import { TrafficStatsPanel } from './TrafficStatsPanel'
 import { TransferPanel } from './TransferPanel'
 import { Section } from './settings/fields'
-import { FoldersSection, WatchedFoldersSection } from './settings/FoldersSection'
+import { FoldersSection } from './settings/FoldersSection'
 import { GameSection, ScheduleSection, SpeedSection } from './settings/SpeedSections'
 import { BlocklistSection, DangerousFilesSection, PrivacySection } from './settings/PrivacySections'
 import { AboutSection, HooksSection, NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
@@ -186,12 +186,7 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
         <DangerousFilesSection extensions={draft.excludedExtensions} onChange={(excludedExtensions) => edit({ excludedExtensions })} />
       </>
     ),
-    automation: (
-      <>
-        <WatchedFoldersSection {...section} />
-        <HooksSection {...section} />
-      </>
-    ),
+    automation: <HooksSection {...section} />,
     cloud: <R2Section {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
     data: (
       <>
