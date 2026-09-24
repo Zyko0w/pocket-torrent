@@ -14,6 +14,25 @@ function droppedLinks (data: DataTransfer): string[] {
   return text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && LINK.test(l))
 }
 
+const LINK_IN_TEXT = /(magnet:\?[^\s"'<>]+|https?:\/\/[^\s"'<>]+)/gi
+
+/**
+ * Liens contenus dans les fichiers déposés qui ne sont pas des .torrent. Un lien glissé depuis le
+ * navigateur arrive souvent aussi sous forme de raccourci (« lien.url » : `URL=magnet:…`) ou de
+ * texte : ce n'est pas une erreur de l'utilisateur. Seuls les petits fichiers sont lus.
+ */
+export async function linksInFiles (files: File[]): Promise<{ links: string[]; rejected: number }> {
+  const links: string[] = []
+  let rejected = 0
+  for (const file of files) {
+    const text = file.size <= 64 * 1024 ? await file.text().catch(() => '') : ''
+    const found = text.match(LINK_IN_TEXT) ?? []
+    if (found.length) links.push(...found)
+    else rejected += 1
+  }
+  return { links, rejected }
+}
+
 interface WebView2Bridge { postMessageWithAdditionalObjects?: (message: string, objects: ArrayLike<File>) => void }
 
 /**
@@ -73,7 +92,12 @@ export function DropZone ({ onDropped }: { onDropped: (items: string[]) => void 
       const items = droppedLinks(data)
       const files = Array.from(data.files)
       const torrents = files.filter((f) => f.name.toLowerCase().endsWith('.torrent'))
-      if (files.length > torrents.length) toast('Seuls les fichiers .torrent peuvent être déposés.')
+      const others = await linksInFiles(files.filter((f) => !torrents.includes(f)))
+      for (const link of others.links) if (!items.includes(link)) items.push(link)
+      // prévenir seulement si rien d'utilisable n'est arrivé avec ces fichiers
+      if (others.rejected && !items.length && !torrents.length) {
+        toast('Seuls les fichiers .torrent et les liens magnet ou http(s) peuvent être déposés.')
+      }
       const paths = await realPaths(torrents)
       for (const [i, file] of torrents.entries()) {
         // le vrai fichier : c'est lui que « supprimer le .torrent d'origine » effacera
