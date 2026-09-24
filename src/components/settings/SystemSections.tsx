@@ -1,7 +1,7 @@
 // Notifications, intégration Windows (démarrage, liens, veille, antivirus, mises à jour),
 // programme externe, réseau et disque.
 import { useEffect, useState } from 'react'
-import { BellRinging, SpinnerGap } from '@phosphor-icons/react'
+import { ArrowSquareOut, BellRinging, GithubLogo, SpinnerGap } from '@phosphor-icons/react'
 import { getVersion } from '@tauri-apps/api/app'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../Toast'
@@ -93,6 +93,32 @@ function UpdateCheck () {
         {busy && <SpinnerGap size={14} className='spin' />} Rechercher une mise à jour
       </button>
     </div>
+  )
+}
+
+/** Adresse affichée ; l'ouverture passe par une commande qui ne connaît que celle-ci (commands.rs). */
+const PROJECT_PAGE = 'github.com/Zyko0w/pocket-torrent-releases'
+
+/** Version, et page GitHub où sont publiées les versions et notes de mise à jour. */
+export function AboutSection () {
+  const toast = useToast()
+  const [version, setVersion] = useState('')
+  useEffect(() => { getVersion().then(setVersion).catch(() => {}) }, [])
+
+  return (
+    <Section id='s-about' title='À propos' intro='Pocket Torrent : torrents et liens directs, avec VPN intégré. Aucune télémétrie.'>
+      <p className='help' style={{ margin: 0 }}>Version {version || '…'}</p>
+      <div className='panel-actions' style={{ alignItems: 'center' }}>
+        <button
+          type='button' className='btn btn-ghost btn-sm'
+          onClick={() => api.openProjectPage().catch((err) => toast(`Ouverture impossible : ${errorMessage(err)}`))}
+        >
+          <GithubLogo size={16} /> Page GitHub <ArrowSquareOut size={12} />
+        </button>
+        <span className='help mono selectable' style={{ margin: 0 }}>{PROJECT_PAGE}</span>
+      </div>
+      <p className='help'>Nouvelles versions, notes de mise à jour et installateurs.</p>
+    </Section>
   )
 }
 

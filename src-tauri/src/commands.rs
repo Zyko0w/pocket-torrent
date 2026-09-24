@@ -141,6 +141,16 @@ pub async fn share_job(
     state.manager.share(&id, options).await.map_err(message)
 }
 
+/// Page GitHub de Pocket Torrent (versions publiées), seule adresse que l'interface peut ouvrir.
+pub const PROJECT_PAGE: &str = "https://github.com/Zyko0w/pocket-torrent-releases";
+
+/// Ouvre la page du projet dans le navigateur. Pas d'adresse fournie par la page : rien d'autre
+/// ne peut être lancé par ce biais.
+#[tauri::command]
+pub async fn open_project_page() -> CommandResult<()> {
+    crate::system::open_with_default(std::path::Path::new(PROJECT_PAGE)).map_err(message)
+}
+
 #[tauri::command]
 pub async fn copy_text(text: String) -> CommandResult<()> {
     crate::system::copy_text(&text).map_err(message)

@@ -112,6 +112,7 @@ pub fn run() {
             commands::set_job_priority,
             commands::set_job_limit,
             commands::delete_job,
+            commands::open_project_page,
             commands::clear_finished,
             commands::job_files,
             commands::set_job_files,

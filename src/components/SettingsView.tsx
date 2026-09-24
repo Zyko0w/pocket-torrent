@@ -16,7 +16,7 @@ import { Section } from './settings/fields'
 import { FoldersSection, WatchedFoldersSection } from './settings/FoldersSection'
 import { GameSection, ScheduleSection, SpeedSection } from './settings/SpeedSections'
 import { BlocklistSection, DangerousFilesSection, PrivacySection } from './settings/PrivacySections'
-import { HooksSection, NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
+import { AboutSection, HooksSection, NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
 import { R2Section } from './settings/R2Section'
 
@@ -161,6 +161,7 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
           defenderAvailable={view.defenderAvailable}
         />
         <NotificationsSection {...section} />
+        <AboutSection />
       </>
     ),
     transfers: (

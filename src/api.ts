@@ -240,6 +240,8 @@ export const api = {
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),
   share: (id: string, options: ShareOptions) => invoke<string>('share_job', { id, options }),
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
+  /** Page GitHub du projet (versions publiées), dans le navigateur. */
+  openProjectPage: () => invoke<void>('open_project_page'),
   setGameMode: (mode: GameModeSwitch) => invoke<void>('set_game_mode', { mode }),
   getSettings: () => invoke<SettingsView>('get_settings'),
   saveSettings: (input: { settings: Settings; secrets: SecretsInput; startWithWindows: boolean; magnetHandler: boolean }) =>
