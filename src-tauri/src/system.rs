@@ -581,3 +581,19 @@ mod imp {
         Ok(previous)
     }
 }
+
+#[cfg(test)]
+mod clipboard_stress {
+    /// Lecture seule du presse-papiers, répétée : jamais d'écriture (le contenu de l'utilisateur
+    /// n'est pas touché). Sert à détecter une corruption mémoire dans `read_clipboard_text`.
+    #[test]
+    #[ignore = "lit le vrai presse-papiers : à lancer à la main"]
+    fn repeated_reads_do_not_corrupt_memory() {
+        for _ in 0..2000 {
+            let text = super::read_clipboard_text(8192);
+            std::hint::black_box(text);
+            let big: Vec<String> = (0..50).map(|i| "x".repeat(i * 10)).collect();
+            std::hint::black_box(big);
+        }
+    }
+}

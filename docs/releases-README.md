@@ -47,7 +47,7 @@
   sélection des pièces les plus rares, réciprocité d'envoi.
 - Ouverture automatique du port sur le routeur (UPnP, NAT-PMP).
 
-## Évolutions depuis la 0.2.0
+## Nouveautés de la 0.2.1
 
 | Ajouté | Retiré |
 | --- | --- |

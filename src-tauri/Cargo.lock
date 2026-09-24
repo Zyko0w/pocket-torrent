@@ -3564,7 +3564,7 @@ dependencies = [
 
 [[package]]
 name = "pocket-torrent"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "axum",
