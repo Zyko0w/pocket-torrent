@@ -236,18 +236,6 @@ pub async fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> 
     state.manager.save_settings(input).await.map_err(message)
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportResult {
-    pub view: SettingsView,
-    pub imported: Vec<&'static str>,
-}
-
-#[tauri::command]
-pub async fn import_web_settings(state: State<'_, AppState>, path: PathBuf) -> CommandResult<ImportResult> {
-    state.manager.import_web(&path).await.map(|(view, imported)| ImportResult { view, imported }).map_err(message)
-}
-
 #[tauri::command]
 pub async fn test_notification(state: State<'_, AppState>) -> CommandResult<()> {
     state.manager.test_notification();

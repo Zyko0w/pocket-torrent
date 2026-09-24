@@ -32,7 +32,7 @@ pub struct Settings {
     /// Continuer à partager un torrent une fois téléchargé.
     pub seed_when_done: bool,
     pub seeding: SeedingSettings,
-    /// Fermer la fenêtre la cache (l'icône reste près de l'horloge).
+    /// Fermer la fenêtre la cache (l'icône reste dans la zone de notification).
     pub close_to_tray: bool,
     /// Empêche la mise en veille de Windows pendant qu'un transfert est actif.
     pub prevent_sleep: bool,
@@ -555,84 +555,3 @@ pub fn slug(text: &str) -> String {
     if out.is_empty() { "categorie".into() } else { out }
 }
 
-// ------------------------------------------------------------ import version web
-
-/// Réglages lus dans le `reglages.json` de la version web de Torrent Cloud.
-pub struct WebImport {
-    pub settings: Settings,
-    pub r2_access_key_id: Option<String>,
-    pub r2_secret_access_key: Option<String>,
-}
-
-/// Reprend les réglages de la version web par-dessus `current` (les réglages Windows restent ceux du logiciel).
-pub fn import_web(path: &Path, current: &Settings) -> anyhow::Result<WebImport> {
-    use anyhow::Context;
-    use serde_json::Value;
-
-    let text = std::fs::read_to_string(path).context("fichier illisible")?;
-    let web: Value = serde_json::from_str(&text).context("ce fichier n'est pas un reglages.json valide")?;
-    if web.get("downloadDir").is_none() || web.get("gameMode").is_none() {
-        anyhow::bail!("ce fichier ne vient pas de la version web de Torrent Cloud");
-    }
-
-    let text_of = |v: &Value| v.as_str().map(str::to_owned);
-    let num = |v: &Value| v.as_u64();
-    let secret = |v: &Value| v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
-    let mut s = current.clone();
-
-    if let Some(dir) = text_of(&web["downloadDir"]) {
-        s.download_dir = PathBuf::from(dir);
-    }
-    if let Some(list) = web["categories"].as_array() {
-        s.categories = list
-            .iter()
-            .filter_map(|c| {
-                Some(Category {
-                    id: text_of(&c["id"]).unwrap_or_default(),
-                    name: text_of(&c["name"])?,
-                    folder: PathBuf::from(text_of(&c["folder"])?),
-                })
-            })
-            .collect();
-    }
-    let kbps = |v: &Value, fallback: u32| num(v).map_or(fallback, |n| n.min(MAX_KBPS as u64) as u32);
-    s.limits.down_kbps = kbps(&web["limits"]["down"], s.limits.down_kbps);
-    s.limits.up_kbps = kbps(&web["limits"]["up"], s.limits.up_kbps);
-    s.queue.max_active = num(&web["queue"]["maxActive"]).map_or(s.queue.max_active, |n| n.min(50) as u32);
-
-    let gm = &web["gameMode"];
-    s.game_mode.mode = match gm["mode"].as_str() {
-        Some("on") => GameModeSwitch::On,
-        Some("off") => GameModeSwitch::Off,
-        _ => GameModeSwitch::Auto,
-    };
-    s.game_mode.action = if gm["action"].as_str() == Some("pause") { GameAction::Pause } else { GameAction::Limit };
-    if let Some(list) = gm["processes"].as_array() {
-        s.game_mode.processes = list.iter().filter_map(text_of).collect();
-    }
-    s.game_mode.down_kbps = kbps(&gm["down"], s.game_mode.down_kbps);
-    s.game_mode.up_kbps = kbps(&gm["up"], s.game_mode.up_kbps);
-
-    if let Some(done) = web["notifications"]["done"].as_bool() {
-        s.notifications.done = done;
-    }
-    if let Some(error) = web["notifications"]["error"].as_bool() {
-        s.notifications.error = error;
-    }
-    s.torrent_port = num(&web["torrentPort"]).map_or(s.torrent_port, |n| u16::try_from(n).unwrap_or(0));
-    s.disk_margin_mb = num(&web["diskMarginMb"]).unwrap_or(s.disk_margin_mb);
-
-    let r2 = &web["r2"];
-    s.r2.account_id = text_of(&r2["accountId"]).unwrap_or_default();
-    s.r2.bucket = text_of(&r2["bucket"]).unwrap_or_default();
-    s.r2.public_url = text_of(&r2["publicUrl"]).unwrap_or_default();
-    s.r2.link_expiry_days = num(&r2["linkExpiryDays"]).map_or(7, |n| n.clamp(1, 7) as u32);
-    s.r2.delete_after_upload = r2["deleteAfterUpload"].as_bool().unwrap_or(true);
-    s.normalize().map_err(anyhow::Error::msg)?;
-
-    Ok(WebImport {
-        settings: s,
-        r2_access_key_id: secret(&r2["accessKeyId"]),
-        r2_secret_access_key: secret(&r2["secretAccessKey"]),
-    })
-}

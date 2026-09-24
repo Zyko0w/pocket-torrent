@@ -1,7 +1,7 @@
 // Notifications, intégration Windows (démarrage, liens, veille, antivirus, mises à jour),
 // programme externe, réseau et disque.
 import { useEffect, useState } from 'react'
-import { ArrowSquareOut, BellRinging, GithubLogo, SpinnerGap } from '@phosphor-icons/react'
+import { BellRinging, SpinnerGap } from '@phosphor-icons/react'
 import { getVersion } from '@tauri-apps/api/app'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../Toast'
@@ -37,9 +37,9 @@ export function WindowsSection (props: WindowsSectionProps) {
   const { settings, update } = props
   return (
     <Section id='s-windows' title='Windows' intro='Démarrage, liens magnet, fichiers .torrent et fermeture.'>
-      <Check checked={props.startWithWindows} onChange={props.onStartWithWindowsChange} label='Lancer Pocket Torrent avec Windows' help='Il démarre discrètement près de l’horloge.' />
+      <Check checked={props.startWithWindows} onChange={props.onStartWithWindowsChange} label='Lancer Pocket Torrent avec Windows' help='Il démarre discrètement, en arrière-plan : son icône apparaît dans la zone de notification, en bas à droite de la barre des tâches.' />
       <Check checked={props.magnetHandler} onChange={props.onMagnetHandlerChange} label='Ouvrir les liens magnet et fichiers .torrent avec Pocket Torrent' help='Un clic sur un lien magnet dans le navigateur, ou un double-clic sur un fichier .torrent, l’ajoute ici. L’ancien programme est remis si tu décoches.' />
-      <Check checked={settings.closeToTray} onChange={(closeToTray) => update({ closeToTray })} label='Garder Pocket Torrent ouvert près de l’horloge quand je ferme la fenêtre' help='Les téléchargements continuent. Pour quitter : clic droit sur l’icône, Quitter.' />
+      <Check checked={settings.closeToTray} onChange={(closeToTray) => update({ closeToTray })} label='Continuer en arrière-plan quand je ferme la fenêtre' help='Les téléchargements continuent et l’icône reste dans la zone de notification (en bas à droite de la barre des tâches). Pour quitter : clic droit sur l’icône, puis Quitter.' />
       <Check
         checked={settings.preventSleep}
         onChange={(preventSleep) => update({ preventSleep })}
@@ -93,32 +93,6 @@ function UpdateCheck () {
         {busy && <SpinnerGap size={14} className='spin' />} Rechercher une mise à jour
       </button>
     </div>
-  )
-}
-
-/** Adresse affichée ; l'ouverture passe par une commande qui ne connaît que celle-ci (commands.rs). */
-const PROJECT_PAGE = 'github.com/Zyko0w/pocket-torrent-releases'
-
-/** Version, et page GitHub où sont publiées les versions et notes de mise à jour. */
-export function AboutSection () {
-  const toast = useToast()
-  const [version, setVersion] = useState('')
-  useEffect(() => { getVersion().then(setVersion).catch(() => {}) }, [])
-
-  return (
-    <Section id='s-about' title='À propos' intro='Pocket Torrent : torrents et liens directs, avec VPN intégré. Aucune télémétrie.'>
-      <p className='help' style={{ margin: 0 }}>Version {version || '…'}</p>
-      <div className='panel-actions' style={{ alignItems: 'center' }}>
-        <button
-          type='button' className='btn btn-ghost btn-sm'
-          onClick={() => api.openProjectPage().catch((err) => toast(`Ouverture impossible : ${errorMessage(err)}`))}
-        >
-          <GithubLogo size={16} /> Page GitHub <ArrowSquareOut size={12} />
-        </button>
-        <span className='help mono selectable' style={{ margin: 0 }}>{PROJECT_PAGE}</span>
-      </div>
-      <p className='help'>Nouvelles versions, notes de mise à jour et installateurs.</p>
-    </Section>
   )
 }
 

@@ -1,4 +1,4 @@
-//! Réglages : lecture, enregistrement, import de la version web.
+//! Réglages : lecture et enregistrement.
 
 use super::*;
 
@@ -72,40 +72,6 @@ impl Manager {
         self.check_game().await;
         tracing::info!("réglages enregistrés");
         Ok(self.settings_view())
-    }
-
-    /// Reprend les réglages et les clés de la version web (reglages.json).
-    pub async fn import_web(self: &Arc<Self>, path: &Path) -> anyhow::Result<(SettingsView, Vec<&'static str>)> {
-        let current = self.settings();
-        let import = crate::settings::import_web(path, &current)?;
-        let mut imported = vec!["dossiers et catégories", "vitesses et file d'attente", "mode jeu", "notifications"];
-        for (secret, value, label) in [
-            (Secret::R2AccessKeyId, &import.r2_access_key_id, "clés Cloudflare R2"),
-            (Secret::R2SecretAccessKey, &import.r2_secret_access_key, ""),
-        ] {
-            if let Some(value) = value {
-                secrets::set(secret, value)?;
-                if !label.is_empty() {
-                    imported.push(label);
-                }
-            }
-        }
-        self.r2_keys_set.store(r2_keys_set(), Ordering::Relaxed);
-        for dir in import.settings.download_roots() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        import.settings.save(&self.settings_path)?;
-        let port_changed = import.settings.torrent_port != current.torrent_port;
-        *self.settings.write() = import.settings.clone();
-        if port_changed {
-            // le port importé ne sert qu'une fois le moteur relancé dessus
-            let _switching = self.vpn_switching.lock().await;
-            self.engine.restart(&import.settings, self.engine.binding(), &self.network()).await?;
-            self.respawn_pending();
-        }
-        self.game.lock().checked = false;
-        self.apply_limits();
-        Ok((self.settings_view(), imported))
     }
 
     pub fn test_notification(&self) {

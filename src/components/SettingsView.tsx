@@ -2,10 +2,9 @@
 // thème (chaque section vit dans `settings/`). Un thème à la fois, choisi dans la colonne de gauche.
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
-  ArrowSquareIn, ChartBar, Cloud, FolderSimple, Gauge, ShieldCheck, SpinnerGap, Stethoscope, WarningCircle,
+  ChartBar, Cloud, FolderSimple, Gauge, ShieldCheck, SpinnerGap, Stethoscope, WarningCircle,
   WifiHigh
 } from '@phosphor-icons/react'
-import { open } from '@tauri-apps/plugin-dialog'
 import { api, errorMessage, type SecretsInput, type Settings, type SettingsView as View } from '../api'
 import { restartsEngine } from '../engineConfig'
 import { useToast } from './Toast'
@@ -16,7 +15,8 @@ import { Section } from './settings/fields'
 import { FoldersSection } from './settings/FoldersSection'
 import { GameSection, ScheduleSection, SpeedSection } from './settings/SpeedSections'
 import { BlocklistSection, DangerousFilesSection, PrivacySection } from './settings/PrivacySections'
-import { AboutSection, NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
+import { NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
+import { AboutPanel } from './AboutPanel'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
 import { R2Section } from './settings/R2Section'
 
@@ -133,20 +133,6 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
     setStatus({ text: '', kind: '' })
   }
 
-  const importWeb = async () => {
-    const path = await open({ filters: [{ name: 'Réglages Torrent Cloud (web)', extensions: ['json'] }] })
-    if (typeof path !== 'string') return
-    try {
-      const result = await api.importWebSettings(path)
-      load(result.view)
-      setError('')
-      toast(`Repris : ${result.imported.join(', ')}`)
-      onSaved()
-    } catch (err) {
-      showError(`Import impossible : ${errorMessage(err)}`)
-    }
-  }
-
   const panels: Record<SettingsTab, ReactNode> = {
     general: (
       <>
@@ -160,7 +146,6 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
           defenderAvailable={view.defenderAvailable}
         />
         <NotificationsSection {...section} />
-        <AboutSection />
       </>
     ),
     transfers: (
@@ -194,14 +179,6 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
         <Section id='s-transfer' title='Changer de PC' intro='Exporter la liste des téléchargements pour la reprendre sur un autre PC.'>
           <TransferPanel />
         </Section>
-        <Section id='s-import' title='Version web' intro='Reprendre les réglages de l’ancienne page Torrent Cloud.'>
-          <div>
-            <button type='button' className='btn btn-ghost btn-sm' onClick={importWeb}>
-              <ArrowSquareIn size={16} /> Importer reglages.json
-            </button>
-            <p className='help'>Dossiers, catégories, vitesses, mode jeu, notifications et clés (rangées dans Windows). Le fichier est dans le dossier de la version web.</p>
-          </div>
-        </Section>
       </>
     ),
     diagnostics: (
@@ -226,13 +203,16 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
       {error && <div className='banner danger' role='alert'><WarningCircle size={16} /> {error}</div>}
 
       <div className='settings-layout'>
-        <nav className='settings-nav' aria-label='Thèmes des réglages'>
-          {SETTINGS_TABS.map((t) => (
-            <button key={t.id} type='button' aria-current={t.id === current.id} onClick={() => onTabChange(t.id)}>
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </nav>
+        <div className='settings-side'>
+          <nav className='settings-nav' aria-label='Thèmes des réglages'>
+            {SETTINGS_TABS.map((t) => (
+              <button key={t.id} type='button' aria-current={t.id === current.id} onClick={() => onTabChange(t.id)}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </nav>
+          <AboutPanel />
+        </div>
         <div className='settings-panel' aria-label={current.label}>
           {panels[current.id]}
         </div>

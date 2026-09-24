@@ -84,7 +84,7 @@ pub fn run() {
                 }
             }
 
-            // lancé avec Windows : reste discret près de l'horloge
+            // lancé avec Windows : reste discret dans la zone de notification
             if !args.iter().any(|arg| arg == system::HIDDEN_ARG) {
                 tray::show_main_window(app.handle());
             }
@@ -127,7 +127,6 @@ pub fn run() {
             commands::set_game_mode,
             commands::get_settings,
             commands::save_settings,
-            commands::import_web_settings,
             commands::test_notification,
             commands::test_r2,
             commands::network_adapters,

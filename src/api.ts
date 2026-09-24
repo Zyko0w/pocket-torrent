@@ -244,7 +244,6 @@ export const api = {
   getSettings: () => invoke<SettingsView>('get_settings'),
   saveSettings: (input: { settings: Settings; secrets: SecretsInput; startWithWindows: boolean; magnetHandler: boolean }) =>
     invoke<SettingsView>('save_settings', { input }),
-  importWebSettings: (path: string) => invoke<{ view: SettingsView; imported: string[] }>('import_web_settings', { path }),
   testNotification: () => invoke<void>('test_notification'),
   testR2: () => invoke<void>('test_r2'),
   performanceSnapshot: () => invoke<PerfSnapshot>('performance_snapshot'),

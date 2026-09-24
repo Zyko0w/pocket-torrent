@@ -1,4 +1,4 @@
-//! Icône près de l'horloge et son menu.
+//! Icône de la zone de notification et son menu.
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};

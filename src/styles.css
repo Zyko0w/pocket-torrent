@@ -397,7 +397,17 @@ input[type='radio']:checked::after { content: ''; position: absolute; inset: 3.5
 
 /* ------------------------------------------------------------ réglages */
 .settings-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
-.settings-nav { position: sticky; top: 0; display: grid; gap: 2px; }
+.settings-side { position: sticky; top: 0; display: grid; gap: 20px; }
+.settings-nav { display: grid; gap: 2px; }
+.about { display: grid; gap: 10px; padding: 16px 12px 0; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12.5px; line-height: 1.45; }
+.about p { margin: 0; }
+.about-head { display: flex; align-items: center; gap: 10px; }
+.about-head div { display: grid; gap: 1px; }
+.about-head b { color: var(--text); font-size: 13.5px; font-weight: 600; }
+.about-head .mono { font-size: 11.5px; }
+.about-link { display: inline-flex; align-items: center; justify-self: start; gap: 6px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: transparent; color: var(--text); font-size: 12.5px; cursor: pointer; transition: border-color var(--duration) var(--ease), background var(--duration) var(--ease); }
+.about-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+.about-note { font-size: 11.5px; }
 .settings-nav button { position: relative; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-muted); font-size: 13.5px; font-weight: 500; text-align: left; cursor: pointer; transition: color var(--duration) var(--ease), background var(--duration) var(--ease), padding var(--duration) var(--ease); }
 .settings-nav button svg { transition: color var(--duration) var(--ease), transform 250ms var(--spring); }
 .settings-nav button:hover { color: var(--text); background: var(--surface-2); padding-left: 15px; }
@@ -494,7 +504,9 @@ dialog::backdrop { background: rgba(3, 3, 6, 0.75); }
   :root { --sidebar: 204px; }
   .wrap { padding: 20px; }
   .settings-layout { grid-template-columns: 1fr; gap: 16px; }
-  .settings-nav { position: static; grid-auto-flow: column; overflow-x: auto; }
+  .settings-side { position: static; }
+  .settings-nav { grid-auto-flow: column; overflow-x: auto; }
+  .about { display: none; }
   .settings-nav button { white-space: nowrap; }
   .field { grid-template-columns: 1fr; }
   .field > .input, .field > select { grid-column: 1; grid-row: auto; }

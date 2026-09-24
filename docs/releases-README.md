@@ -24,7 +24,7 @@
 - **Simple** : colle un lien, c'est parti. Tout le reste a des réglages par défaut raisonnables.
 - **Discret** : chiffrement des échanges, DNS chiffré, VPN avec coupure automatique, aucune télémétrie.
 - **Respectueux de ton PC** : le mode jeu libère la connexion dès qu'un jeu se lance, et l'application
-  se fait oublier près de l'horloge.
+  se fait oublier dans la zone de notification.
 - **Moderne** : moteur écrit en Rust ([librqbit](https://github.com/ikatson/rqbit), amélioré pour
   Pocket Torrent), interface légère, mises à jour signées.
 
@@ -50,7 +50,7 @@
 ### Au quotidien
 - **Mode jeu** : quand un jeu de ta liste démarre, les téléchargements ralentissent ou se mettent en pause.
 - **Éteindre le PC à la fin** des téléchargements (avec une minute pour annuler).
-- Démarrage avec Windows, ouverture des liens magnet depuis le navigateur, notifications, réduction près de l'horloge.
+- Démarrage avec Windows, ouverture des liens magnet depuis le navigateur, notifications, réduction dans la zone de notification.
 - **Cloudflare R2** (optionnel) : envoi automatique en ligne une fois le téléchargement fini, avec liens de partage.
 - **Statistiques** cumulées, export et import de la liste pour **changer de PC**, journal exportable sans données sensibles.
 

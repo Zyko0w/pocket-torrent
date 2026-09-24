@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-/// Argument passé au lancement automatique : l'application démarre cachée près de l'horloge.
+/// Argument passé au lancement automatique : l'application démarre cachée dans la zone de notification.
 pub const HIDDEN_ARG: &str = "--cache";
 
 // ------------------------------------------------------------ espace disque

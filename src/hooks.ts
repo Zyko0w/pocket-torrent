@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-/** Vrai tant que la fenêtre est visible (fausse quand elle est réduite ou cachée près de l'horloge). */
+/** Vrai tant que la fenêtre est visible (fausse quand elle est réduite ou cachée dans la zone de notification). */
 function usePageVisible (): boolean {
   const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden')
   useEffect(() => {
@@ -14,7 +14,7 @@ function usePageVisible (): boolean {
 /**
  * Appelle `callback` tout de suite puis toutes les `delay` ms (null = arrêté). En pause quand
  * la fenêtre n'est pas visible : l'appli passe l'essentiel de son temps cachée près de
- * l'horloge, inutile d'y recalculer la liste chaque seconde. Rappel immédiat au retour.
+ * la zone de notification, inutile d'y recalculer la liste chaque seconde. Rappel immédiat au retour.
  */
 export function useInterval (callback: () => void, delay: number | null) {
   const saved = useRef(callback)
