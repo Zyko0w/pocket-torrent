@@ -132,15 +132,6 @@ pub async fn open_job_folder(state: State<'_, AppState>, id: String) -> CommandR
     state.manager.open_folder(&id).map_err(message)
 }
 
-#[tauri::command]
-pub async fn share_job(
-    state: State<'_, AppState>,
-    id: String,
-    options: crate::engine::ShareOptions,
-) -> CommandResult<String> {
-    state.manager.share(&id, options).await.map_err(message)
-}
-
 /// Page GitHub de Pocket Torrent (versions publiées), seule adresse que l'interface peut ouvrir.
 pub const PROJECT_PAGE: &str = "https://github.com/Zyko0w/pocket-torrent-releases";
 

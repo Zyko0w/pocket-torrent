@@ -14,13 +14,13 @@ use librqbit::api::TorrentIdOrHash;
 use librqbit::dht::DhtPersistenceConfig;
 use librqbit::limits::LimitsConfig;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, CreateTorrentOptions, DhtSessionConfig,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, DhtSessionConfig,
     ListenerMode, ListenerOptions, ManagedTorrent, Session, SessionOptions, SessionPersistenceConfig,
     TorrentStatsState, generate_azereus_style,
 };
 use parking_lot::{Mutex, RwLock};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use librqbit::mse::EncryptionMode;
 
@@ -142,19 +142,6 @@ pub struct PeerView {
     pub uploaded: u64,
     pub down_speed: u64,
     pub up_speed: u64,
-}
-
-/// Réglages de création d'un torrent (§5, §6.1 du plan d'upgrade), fournis par l'interface.
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ShareOptions {
-    /// Trackers ajoutés à ceux par défaut ; ignorés si `is_private` (un torrent privé n'a
-    /// rien à faire sur des trackers publics).
-    pub extra_trackers: Vec<String>,
-    /// Taille de pièce en Kio (puissance de deux), 0 = automatique.
-    pub piece_length_kib: u32,
-    /// BEP 27 : coupe DHT, PEX et découverte locale pour ce torrent (chez les clients qui le respectent).
-    pub is_private: bool,
 }
 
 #[derive(Serialize)]
@@ -885,38 +872,6 @@ impl Engine {
         }
     }
 
-    /// Crée un torrent à partir de fichiers du disque et commence à les partager.
-    /// Le fichier .torrent est aussi enregistré dans `torrents-crees`.
-    pub async fn share(&self, path: &Path, share: &ShareOptions) -> anyhow::Result<(String, PathBuf)> {
-        // un torrent privé n'a rien à faire sur des trackers publics
-        let mut trackers: Vec<String> =
-            if share.is_private { Vec::new() } else { EXTRA_TRACKERS.iter().map(|t| (*t).to_owned()).collect() };
-        for tracker in &share.extra_trackers {
-            let tracker = tracker.trim();
-            if !tracker.is_empty() && !trackers.iter().any(|t| t == tracker) {
-                trackers.push(tracker.to_owned());
-            }
-        }
-        let options = CreateTorrentOptions {
-            trackers,
-            piece_length: (share.piece_length_kib > 0).then(|| share.piece_length_kib.saturating_mul(1024)),
-            is_private: share.is_private,
-            ..Default::default()
-        };
-        let (created, handle) = self
-            .session()
-            .create_and_serve_torrent(path, options)
-            .await
-            .map_err(|err| anyhow!("création du torrent impossible : {err}"))?;
-        let hash = handle.info_hash().as_string();
-        let folder = self.data_dir.join("torrents-crees");
-        std::fs::create_dir_all(&folder)?;
-        let name = path.file_name().map_or_else(|| "partage".into(), |n| n.to_string_lossy().into_owned());
-        let torrent_path = folder.join(format!("{}-{}.torrent", safe_file_name(&name), &hash[..8]));
-        std::fs::write(&torrent_path, created.as_bytes()?)?;
-        Ok((hash, torrent_path))
-    }
-
     pub async fn pause(&self, hash: &str) -> anyhow::Result<()> {
         let torrent = self.handle(hash)?;
         if !torrent.is_paused() {
@@ -1068,12 +1023,13 @@ mod sandbox_tests {
         let content = sandbox.root.join("contenu source").join("Film de test 2026.mkv");
         std::fs::create_dir_all(content.parent().unwrap()).unwrap();
         std::fs::write(&content, vec![7u8; 300_000]).unwrap();
-        let (hash, created) = engine.share(&content, &ShareOptions::default()).await.unwrap();
-        // on ne garde que le fichier .torrent : le torrent partagé est retiré du moteur
-        engine.delete(&hash, false).await.unwrap();
+        let (created, handle) =
+            engine.session().create_and_serve_torrent(&content, Default::default()).await.expect("création du .torrent");
+        // on ne garde que le fichier .torrent : le torrent créé est retiré du moteur
+        engine.delete(&handle.info_hash().as_string(), false).await.unwrap();
         let target = sandbox.root.join("Mes torrents").join("Cocorico 2 TRUEFRENCH 4K (1).torrent");
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-        std::fs::copy(created, &target).unwrap();
+        std::fs::write(&target, created.as_bytes().unwrap()).unwrap();
         target
     }
 

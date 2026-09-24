@@ -19,7 +19,7 @@
 - Lecture des vidéos en cours de téléchargement (VLC, mpv…).
 - File d'attente à trois niveaux de priorité, qui déterminent l'ordre de démarrage et la part de bande passante.
 - Catégories avec dossier dédié, limites de vitesse, planificateur horaire.
-- Partage avec ratio et durée maximum ; création de torrents.
+- Partage avec ratio et durée maximum.
 
 **Confidentialité**
 - Liaison stricte à l'interface du VPN, avec arrêt immédiat en cas de coupure et reprise automatique.

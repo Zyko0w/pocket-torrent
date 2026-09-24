@@ -526,3 +526,6 @@ dialog::backdrop { background: rgba(3, 3, 6, 0.75); }
 .advanced-toggle { align-self: center; gap: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
 .hidden-advanced { margin: 4px 0 0; color: var(--text-muted); font-size: 12.5px; }
 .link-btn { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* notifications : coche de confirmation en vert (lisible en thème clair comme sombre) */
+.toast-icon { flex-shrink: 0; color: var(--success); }

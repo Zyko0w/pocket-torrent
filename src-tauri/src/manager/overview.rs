@@ -89,7 +89,6 @@ fn base_job(id: String, kind: &'static str, common: &Common) -> JobView {
         }),
         limit_kbps: 0,
         in_engine: false,
-        can_share: false,
         source_file: None,
         search_secs: None,
         peers_found: None,
@@ -185,10 +184,6 @@ fn direct_job(entry: &DirectEntry, runtime: Option<&DirectRuntime>) -> JobView {
     } else {
         "queued"
     });
-    // lecture du disque seulement quand la réponse peut servir (terminé, pas encore partagé)
-    let file_on_disk =
-        c.finished_at.is_some() && entry.shared_hash.is_none() && entry.final_path.as_ref().is_some_and(|p| p.exists());
-    job.can_share = c.finished_at.is_some() && file_on_disk && entry.shared_hash.is_none();
     job
 }
 

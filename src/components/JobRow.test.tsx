@@ -9,7 +9,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => null) }))
 function renderRow (job = makeJob(), onDelete = vi.fn()) {
   render(
     <ToastProvider>
-      <ul><JobRow job={job} categoryName={null} onDelete={onDelete} onShare={vi.fn()} onChanged={vi.fn()} /></ul>
+      <ul><JobRow job={job} categoryName={null} onDelete={onDelete} onChanged={vi.fn()} /></ul>
     </ToastProvider>
   )
   return onDelete
@@ -45,7 +45,7 @@ describe('JobRow', () => {
 describe('JobRow (rendu)', () => {
   it('une ligne identique relue n’est pas redessinée, une ligne changée l’est', () => {
     const job = makeJob({ status: 'done', finishedAt: 1 })
-    const props = { categoryName: null, onDelete: vi.fn(), onShare: vi.fn(), onChanged: vi.fn() }
+    const props = { categoryName: null, onDelete: vi.fn(), onChanged: vi.fn() }
     const { rerender } = render(<ToastProvider><ul><JobRow job={job} {...props} /></ul></ToastProvider>)
     const title = screen.getByText('Film de test 2026.mkv')
     rerender(<ToastProvider><ul><JobRow job={{ ...job }} {...props} /></ul></ToastProvider>)

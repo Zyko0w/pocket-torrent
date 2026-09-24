@@ -134,7 +134,6 @@ impl Manager {
             folder,
             part_path: None,
             final_path: None,
-            shared_hash: None,
             common,
         });
         Ok(())

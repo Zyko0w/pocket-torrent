@@ -146,19 +146,12 @@ impl Manager {
     }
 
     async fn on_torrent_finished(self: &Arc<Self>, hash: &str) {
-        let (name, dest, shared) = {
+        let (name, dest) = {
             let data = self.data.lock();
             let Some(entry) = data.torrents.get(hash) else { return };
-            (
-                entry.name.clone().unwrap_or_else(|| "Téléchargement".into()),
-                entry.common.dest,
-                entry.shared_from.is_some(),
-            )
+            (entry.name.clone().unwrap_or_else(|| "Téléchargement".into()), entry.common.dest)
         };
         tracing::info!("torrent terminé : {name}");
-        if shared {
-            return;
-        }
         self.notify(Notify::Done, "Téléchargement terminé", &name);
         if let Ok(path) = self.engine.content_path(hash) {
             self.maybe_scan(name.clone(), path);

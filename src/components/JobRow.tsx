@@ -112,11 +112,10 @@ interface JobRowProps {
   job: Job
   categoryName: string | null
   onDelete: (job: Job) => void
-  onShare: (job: Job) => void
   onChanged: () => void
 }
 
-export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onShare, onChanged }: JobRowProps) {
+export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onChanged }: JobRowProps) {
   const toast = useToast()
   const [detail, setDetail] = useState<Detail | null>(null)
   const [limitOpen, setLimitOpen] = useState(false)
@@ -195,9 +194,6 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
   }
   if (job.link && !isTorrent) {
     menu.push({ label: 'Copier le lien d’origine', icon: <Copy size={16} />, separated: true, onSelect: () => run(() => copyText(job.link!), 'Lien copié') })
-  }
-  if (job.canShare) {
-    menu.push({ label: 'Partager en torrent…', icon: <ShareNetwork size={16} />, onSelect: () => onShare(job) })
   }
   if (isTorrent && job.inEngine) {
     menu.push({ label: 'Revérifier', icon: <MagnifyingGlass size={16} />, onSelect: () => run(() => api.recheck(job.id), 'Vérification relancée') })
@@ -317,6 +313,6 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onSha
  * téléchargements terminés qui ne bougent plus.
  */
 function sameRow (a: JobRowProps, b: JobRowProps): boolean {
-  return a.categoryName === b.categoryName && a.onDelete === b.onDelete && a.onShare === b.onShare &&
+  return a.categoryName === b.categoryName && a.onDelete === b.onDelete &&
     a.onChanged === b.onChanged && JSON.stringify(a.job) === JSON.stringify(b.job)
 }

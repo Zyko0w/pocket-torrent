@@ -56,7 +56,6 @@ export interface Job {
   delivery: Delivery | null
   limitKbps: number
   inEngine: boolean
-  canShare: boolean
   /** Fichier .torrent local d'origine, s'il existe encore. */
   sourceFile: string | null
   /** Recherche des infos d'un magnet : secondes écoulées et pairs trouvés (sinon `null`). */
@@ -206,13 +205,6 @@ export interface AddOptions {
 
 export interface AddReport { added: number; failed: string[]; errors: string[] }
 
-export interface ShareOptions {
-  extraTrackers: string[]
-  /** Kio, puissance de deux ; 0 = automatique. */
-  pieceLengthKib: number
-  isPrivate: boolean
-}
-
 export const api = {
   overview: () => invoke<Overview>('overview'),
   preview: (link: string) => invoke<Preview>('preview_torrent', { link }),
@@ -236,7 +228,6 @@ export const api = {
   pieceMap: (id: string) => invoke<PieceMap>('job_piece_map', { id }),
   magnet: (id: string) => invoke<string>('job_magnet', { id }),
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),
-  share: (id: string, options: ShareOptions) => invoke<string>('share_job', { id, options }),
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
   /** Redirection de port par le VPN (NAT-PMP) : port obtenu ou dernière erreur. */
   forwardingView: () => invoke<{ enabled: boolean; port: number | null; error: string | null }>('forwarding_view'),

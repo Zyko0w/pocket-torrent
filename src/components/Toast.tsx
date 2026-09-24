@@ -23,7 +23,7 @@ export function ToastProvider ({ children }: { children: ReactNode }) {
       {/* annonce pour les lecteurs d'écran */}
       <div className='sr-only' role='status' aria-atomic='true'>{visible ? message : ''}</div>
       <div className={`toast ${visible ? 'show' : ''}`} aria-hidden='true'>
-        <Check size={16} color='var(--primary-text)' />
+        <Check size={16} weight='bold' className='toast-icon' aria-hidden='true' />
         {message}
       </div>
     </ToastContext.Provider>

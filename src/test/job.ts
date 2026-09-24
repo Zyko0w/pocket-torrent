@@ -29,7 +29,6 @@ export function makeJob (overrides: Partial<Job> = {}): Job {
     delivery: null,
     limitKbps: 0,
     inEngine: true,
-    canShare: false,
     sourceFile: null,
     searchSecs: null,
     peersFound: null,

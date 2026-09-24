@@ -16,7 +16,7 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::danger;
 use crate::direct::{self, Download, DownloadError, Progress};
-use crate::engine::{Binding, Engine, EngineState, FileView, PeerView, Preview, ShareOptions, TorrentView};
+use crate::engine::{Binding, Engine, EngineState, FileView, PeerView, Preview, TorrentView};
 use crate::storage_to::StorageTo;
 use crate::secrets::{self, Secret};
 use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};
@@ -90,8 +90,6 @@ pub struct JobView {
     pub limit_kbps: u32,
     /// Le torrent est dans le moteur : fichiers et pairs consultables.
     pub in_engine: bool,
-    /// Téléchargement direct terminé, pas encore partagé en torrent.
-    pub can_share: bool,
     /// Fichier .torrent local d'origine, s'il existe encore (proposé à la suppression).
     pub source_file: Option<String>,
     /// Recherche des infos d'un magnet : secondes écoulées et pairs trouvés jusqu'ici.

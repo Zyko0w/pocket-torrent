@@ -147,8 +147,6 @@ pub struct TorrentEntry {
     pub folder: Option<PathBuf>,
     /// Faux une fois le torrent retiré du moteur (fichiers envoyés en ligne puis effacés).
     pub removed: bool,
-    /// Créé avec « Partager en torrent » depuis ce téléchargement direct.
-    pub shared_from: Option<String>,
     /// Ordre de téléchargement des fichiers choisi par l'utilisateur (§4.1). Le moteur ne le
     /// garde que tant que le torrent tourne : réappliqué après une pause ou un redémarrage.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -186,8 +184,6 @@ pub struct DirectEntry {
     pub folder: PathBuf,
     pub part_path: Option<PathBuf>,
     pub final_path: Option<PathBuf>,
-    /// Torrent créé à partir de ce fichier.
-    pub shared_hash: Option<String>,
     #[serde(flatten)]
     pub common: Common,
 }

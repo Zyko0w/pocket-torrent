@@ -357,54 +357,6 @@ impl Manager {
         system::reveal(&path)
     }
 
-    /// Crée un torrent à partir d'un fichier téléchargé en direct et le partage.
-    pub async fn share(self: &Arc<Self>, id: &str, options: ShareOptions) -> anyhow::Result<String> {
-        validate_share_options(&options)?;
-        let JobKey::Direct(id) = JobKey::parse(id)? else {
-            bail!("Un torrent est déjà partagé : utilise Reprendre.");
-        };
-        let entry =
-            self.data.lock().directs.iter().find(|d| d.id == id).cloned().context("Téléchargement introuvable.")?;
-        if entry.shared_hash.is_some() {
-            bail!("Ce fichier est déjà partagé.");
-        }
-        let path = entry.final_path.clone().filter(|p| p.exists()).context("Fichier introuvable sur le disque.")?;
-        let (hash, torrent_path) = self.engine.share(&path, &options).await?;
-        {
-            let mut data = self.data.lock();
-            let torrent = data.torrents.entry(hash.clone()).or_default();
-            torrent.shared_from = Some(id.clone());
-            torrent.common.category = entry.common.category.clone();
-            torrent.common.added_at = now_ms();
-            torrent.common.finished_at.get_or_insert_with(now_ms);
-            if let Some(direct) = data.direct_mut(&id) {
-                direct.shared_hash = Some(hash.clone());
-            }
-        }
-        tracing::info!("partagé en torrent : {} ({})", path.display(), torrent_path.display());
-        self.save_now();
-        self.magnet(&format!("t:{hash}"))
-    }
-}
-
-/// Vérifie les réglages de création d'un torrent (taille de pièce, trackers) avant de les
-/// transmettre au moteur, avec un message d'erreur en français.
-fn validate_share_options(options: &ShareOptions) -> anyhow::Result<()> {
-    if options.piece_length_kib != 0
-        && (!options.piece_length_kib.is_power_of_two() || !(16..=65536).contains(&options.piece_length_kib))
-    {
-        bail!("Taille de pièce : une puissance de deux en Kio entre 16 et 65536, ou 0 pour automatique.");
-    }
-    if options.extra_trackers.len() > 20 {
-        bail!("Trackers supplémentaires : 20 maximum.");
-    }
-    for tracker in options.extra_trackers.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
-        let url = url::Url::parse(tracker).map_err(|_| anyhow!("Tracker invalide : {tracker}"))?;
-        if !matches!(url.scheme(), "http" | "https" | "udp") {
-            bail!("Tracker invalide (http, https ou udp attendu) : {tracker}");
-        }
-    }
-    Ok(())
 }
 
 /// Efface un fichier .torrent d'origine : jamais autre chose qu'un fichier « .torrent », pour

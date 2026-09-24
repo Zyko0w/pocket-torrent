@@ -4,7 +4,7 @@ import {
   Pause, Play, ShieldWarning, Tag, Tray, WarningCircle
 } from '@phosphor-icons/react'
 import { listen } from '@tauri-apps/api/event'
-import { api, copyText, errorMessage, isFinished, type GameModeSwitch, type Job, type Overview, type ShareOptions } from './api'
+import { api, errorMessage, isFinished, type GameModeSwitch, type Job, type Overview } from './api'
 import { formatSpeed, plural } from './format'
 import { useInterval } from './hooks'
 import { SORTS, loadSort, saveSort, searchJobs, sortJobs, type SortKey } from './jobList'
@@ -14,7 +14,6 @@ import { DeleteDialog } from './components/DeleteDialog'
 import { JobRow } from './components/JobRow'
 import { Logo } from './components/Logo'
 import { SettingsView, type SettingsTab } from './components/SettingsView'
-import { ShareDialog } from './components/ShareDialog'
 import { ToastProvider, useToast } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
 import { LinkHandlerPrompt } from './components/LinkHandlerPrompt'
@@ -167,7 +166,6 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
   const [sort, setSort] = useState<SortKey>(loadSort)
   const [choosing, setChoosing] = useState<AddRequest | null>(null)
   const [deleting, setDeleting] = useState<Job | null>(null)
-  const [sharing, setSharing] = useState<Job | null>(null)
 
   const categories = overview?.categories ?? []
   const categoryNames = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
@@ -182,20 +180,6 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
     try {
       await api.remove(target.id, deleteFiles, deleteOnline, deleteSource)
       toast(deleteFiles || deleteOnline || deleteSource ? 'Téléchargement et fichiers supprimés' : 'Retiré de la liste')
-      refresh()
-    } catch (err) {
-      toast(errorMessage(err))
-    }
-  }
-
-  const confirmShare = async (options: ShareOptions) => {
-    if (!sharing) return
-    const target = sharing
-    setSharing(null)
-    try {
-      const magnet = await api.share(target.id, options)
-      await copyText(magnet)
-      toast('Torrent créé, lien magnet copié')
       refresh()
     } catch (err) {
       toast(errorMessage(err))
@@ -289,7 +273,6 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
                 job={job}
                 categoryName={job.category ? categoryNames.get(job.category) ?? null : null}
                 onDelete={setDeleting}
-                onShare={setSharing}
                 onChanged={refresh}
               />
             ))}
@@ -304,7 +287,6 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
 
       <AddDialog request={choosing} onClose={() => setChoosing(null)} onAdded={(name) => { toast(`« ${name} » ajouté`); onAdded() }} />
       <DeleteDialog job={deleting} onCancel={() => setDeleting(null)} onConfirm={confirmDelete} />
-      <ShareDialog job={sharing} onCancel={() => setSharing(null)} onConfirm={confirmShare} />
     </>
   )
 }

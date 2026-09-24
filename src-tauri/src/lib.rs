@@ -127,7 +127,6 @@ pub fn run() {
             commands::job_piece_map,
             commands::job_magnet,
             commands::open_job_folder,
-            commands::share_job,
             commands::copy_text,
             commands::take_launch_links,
             commands::set_game_mode,
