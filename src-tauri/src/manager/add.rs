@@ -84,6 +84,12 @@ impl Manager {
             {
                 bail!("Ce torrent est déjà dans la liste.");
             }
+            let discreet = settings.privacy.hide_announces || settings.privacy.hardened_mode;
+            if discreet && lower.starts_with("magnet:") && !magnet_has_discreet_source(link) {
+                bail!(
+                    "Mode discret actif (Réglages › Confidentialité) : sans DHT, ce magnet ne peut être cherché                      que par un tracker HTTPS, et il n'en contient aucun. Désactive le mode discret ou                      utilise le fichier .torrent."
+                );
+            }
             if local_file {
                 // rien à chercher sur le réseau : ajouté tout de suite, avant que le fichier ne
                 // puisse être déplacé ou supprimé (il n'est plus relu ensuite)
@@ -265,4 +271,25 @@ pub(super) fn magnet_hash(link: &str) -> Option<String> {
 fn magnet_name(link: &str) -> Option<String> {
     let url = url::Url::parse(link).ok()?;
     url.query_pairs().find(|(key, _)| key == "dn").map(|(_, value)| value.into_owned())
+}
+
+/// Le magnet a une source utilisable en mode discret (DHT coupée, trackers HTTPS seuls) : un
+/// tracker HTTPS ou un pair indiqué directement (`x.pe`).
+pub(super) fn magnet_has_discreet_source(link: &str) -> bool {
+    let Ok(url) = url::Url::parse(link) else { return false };
+    url.query_pairs().any(|(key, value)| {
+        (key == "tr" && value.to_lowercase().starts_with("https://")) || key == "x.pe"
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn discreet_mode_needs_https_tracker_or_direct_peer() {
+        let udp = "magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a&tr=udp://t.org:1337/announce&tr=http://t.org/a";
+        assert!(!super::magnet_has_discreet_source(udp));
+        assert!(super::magnet_has_discreet_source(&format!("{udp}&tr=https%3A%2F%2Ft.org%2Fannounce")));
+        assert!(super::magnet_has_discreet_source(&format!("{udp}&x.pe=1.2.3.4:5")));
+        assert!(!super::magnet_has_discreet_source("pas un lien"));
+    }
 }
