@@ -107,13 +107,17 @@ impl Manager {
 
     /// Appelé chaque seconde : lance la vérification quand l'intervalle est écoulé.
     pub(super) fn maintain_feeds(self: &Arc<Self>) {
-        let settings = self.settings.read().rss.clone();
-        if !settings.feeds.iter().any(|f| f.enabled) {
+        // appelé chaque seconde : juste les deux valeurs utiles, sans copier la liste des flux
+        let (active, interval_minutes) = {
+            let settings = self.settings.read();
+            (settings.rss.feeds.iter().any(|f| f.enabled), settings.rss.interval_minutes)
+        };
+        if !active {
             return;
         }
         {
             let mut feeds = self.feeds.lock();
-            let every = Duration::from_secs(u64::from(settings.interval_minutes) * 60);
+            let every = Duration::from_secs(u64::from(interval_minutes) * 60);
             if feeds.busy || feeds.last_run.is_some_and(|at| at.elapsed() < every) {
                 return;
             }
@@ -187,6 +191,10 @@ impl Manager {
         let options = AddOptions { category: feed.category.clone(), ..Default::default() };
         let mut added = Vec::new();
         for (item, episode) in chosen {
+            if !rss::link_allowed(&feed.url, &item.link) {
+                tracing::warn!("flux RSS « {} » : lien vers le réseau local refusé pour « {} »", feed.name, item.title);
+                continue;
+            }
             match self.add_link(&item.link, &options, settings).await {
                 Ok(()) => added.push(item.title.clone()),
                 // déjà là (ajouté à la main, ou par un autre flux) : l'épisode compte comme récupéré

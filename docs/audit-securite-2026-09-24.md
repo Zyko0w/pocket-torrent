@@ -74,3 +74,35 @@ redirection de port NAT-PMP, question des liens magnet au premier lancement.
 - Identifiants renvoyés par storage.to validés (lettres et chiffres) avant d'être mis dans une adresse ; suppression refusée pour un identifiant ou un type piégé (`storage_to::tests::deletion_needs_the_owner_token_and_a_plain_id`).
 - Preuves de propriété (suppression à distance) gardées côté Rust, jamais envoyées à l'interface (`overview::tests::storage_owner_tokens_never_reach_the_interface`) ; jeton de compte et jeton de visiteur dans le Gestionnaire d'identification.
 - Envoi testé contre un faux serveur storage.to en bac à sable : envoi simple, envoi en plusieurs parties reconstitué à l'identique, collection, durée de vie.
+
+---
+
+# Audit des ajouts depuis la 0.2.0 — 24/09/2026
+
+Portée : limite de vitesse par torrent, liens magnet du presse-papiers, graphique de débit,
+flux RSS, storage.to (voir section précédente), retrait de la création de torrents.
+
+## Corrigé
+
+| Gravité | Problème | Correctif | Test |
+| --- | --- | --- | --- |
+| **Moyenne** | Flux RSS : un flux hostile pouvait faire suivre des liens `.torrent` vers le réseau local (box, NAS : `http://192.168.1.1/…`), c'est-à-dire des requêtes émises par l'appli dans le réseau de l'utilisateur. | Lien web vers une adresse locale (privée, boucle, lien local, CGNAT, `localhost`, `.local`…, IPv6 comprise) refusé, sauf sur le même serveur que le flux (Jackett / Prowlarr sur ce PC). Magnets toujours acceptés. | `rss::tests::hostile_links_to_the_local_network_are_refused` — **contre-test** : protection retirée, le test échoue ; remise, il passe. |
+| Faible | Enregistrement des réglages : fichier renommé sans être d'abord écrit sur le disque ; une coupure de courant pouvait laisser un `reglages.json` vide. | Écriture sûre commune (`store::write_atomic` : écriture, `sync_all`, renommage). | `store::write_tests::atomic_write_replaces_the_file_and_leaves_no_temporary` |
+
+## Vérifié, résiste
+
+- **Flux RSS** : entité externe (XXE) jamais chargée ; flux de plus de 5 Mio coupé ; 300 éléments au plus ; adresses `file:`, `ftp:`, `javascript:` refusées ; lien d'un élément vers une page web jamais téléchargé (magnet ou `.torrent` seulement) ; flux lus par le même chemin réseau que les téléchargements (VPN). Faux serveur de flux en bac à sable (`feeds::tests::feed_is_fetched_and_hostile_answers_are_refused`).
+- **Presse-papiers** : lu seulement au retour sur la fenêtre, côté Rust, taille bornée ; seul un lien magnet valide (une ligne, 8 000 caractères au plus) est renvoyé à l'interface, une seule fois (`add::tests::only_a_real_magnet_is_taken_from_the_clipboard`) ; désactivable.
+- **Limite par torrent** : bornée (4 000 000 Ko/s), jamais dépassée par la répartition par priorité, part libérée redistribuée (`bandwidth::tests::manual_limit_is_never_exceeded_and_frees_the_rest`).
+- **Graphique** : historique en mémoire seulement, borné (300 points par téléchargement), oublié pour un téléchargement retiré.
+- **Création de torrents retirée** : commande `share_job` supprimée, une surface de moins.
+
+## Risque résiduel (documenté)
+
+- Flux RSS : un nom de domaine public qui se résout vers une adresse locale (rebinding DNS) n'est pas bloqué par la vérification du lien, faite sur l'adresse écrite. Portée limitée à des requêtes GET de téléchargement de `.torrent`, sur un flux que l'utilisateur a choisi d'ajouter.
+
+## Optimisation et refactoring
+
+- Vérification des flux : lit deux valeurs des réglages chaque seconde au lieu de copier toute la liste des flux.
+- Écriture sûre des fichiers mise en commun (liste des téléchargements, réglages, mémoire des flux).
+- Mise en forme `rustfmt` appliquée au code ajouté.

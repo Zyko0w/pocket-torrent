@@ -165,6 +165,53 @@ pub fn parse_feed(xml: &str) -> anyhow::Result<Vec<FeedItem>> {
     Ok(items)
 }
 
+/// Lien d'un élément que l'appli peut suivre. Un flux hostile pourrait viser le réseau local
+/// (« http://192.168.1.1/… » : la box, un NAS) : un lien web vers une adresse locale n'est suivi
+/// que s'il est sur le même serveur que le flux lui-même (cas de Jackett / Prowlarr sur ce PC).
+/// Les liens magnet ne déclenchent aucune requête web : toujours acceptés.
+pub fn link_allowed(feed_url: &str, link: &str) -> bool {
+    if link.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("magnet:?")) {
+        return true;
+    }
+    let Ok(target) = url::Url::parse(link) else { return false };
+    if !matches!(target.scheme(), "http" | "https") {
+        return false;
+    }
+    let same_server = url::Url::parse(feed_url).is_ok_and(|feed| {
+        feed.host_str() == target.host_str() && feed.port_or_known_default() == target.port_or_known_default()
+    });
+    same_server || !is_local_host(&target)
+}
+
+/// Adresse de ce PC ou du réseau local (écrite telle quelle dans le lien).
+fn is_local_host(url: &url::Url) -> bool {
+    use std::net::IpAddr;
+    match url.host() {
+        Some(url::Host::Domain(name)) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            name == "localhost"
+                || name.ends_with(".localhost")
+                || name.ends_with(".local")
+                || name.ends_with(".lan")
+                || name.ends_with(".home.arpa")
+        }
+        Some(url::Host::Ipv4(ip)) => {
+            let ip = IpAddr::V4(ip);
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || matches!(ip, IpAddr::V4(v4) if v4.is_private() || v4.is_link_local() || v4.is_broadcast() || v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1]))
+        }
+        Some(url::Host::Ipv6(ip)) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00
+                || (ip.segments()[0] & 0xffc0) == 0xfe80
+                || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_private() || v4.is_loopback() || v4.is_link_local())
+        }
+        None => true,
+    }
+}
+
 /// Mots d'un filtre (séparés par des espaces ou des virgules), en minuscules.
 fn words(filter: &str) -> Vec<String> {
     filter.split([' ', ',']).map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect()
@@ -284,6 +331,33 @@ mod tests {
             "<item><title>t</title><link>https://a.example/x.torrent</link></item>".repeat(1000)
         );
         assert_eq!(parse_feed(&many).unwrap().len(), MAX_ITEMS);
+    }
+
+    #[test]
+    fn hostile_links_to_the_local_network_are_refused() {
+        let public_feed = "https://tracker.example/rss";
+        for link in [
+            "http://192.168.1.1/cgi-bin/reboot.torrent",
+            "http://10.0.0.5/x.torrent",
+            "http://127.0.0.1:9117/dl/x.torrent",
+            "http://localhost/x.torrent",
+            "http://nas.local/x.torrent",
+            "http://[::1]/x.torrent",
+            "http://[fe80::1]/x.torrent",
+            "http://[::ffff:192.168.0.1]/x.torrent",
+            "http://169.254.169.254/latest/meta-data",
+            "http://100.64.0.1/x.torrent",
+            "file:///C:/Windows/win.ini",
+        ] {
+            assert!(!link_allowed(public_feed, link), "{link}");
+        }
+        assert!(link_allowed(public_feed, "https://tracker.example/dl/1.torrent"));
+        assert!(link_allowed(public_feed, "https://autre-site.example/1.torrent"));
+        assert!(link_allowed(public_feed, "magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a"));
+        // Jackett sur ce PC : ses propres liens restent utilisables, pas ceux vers un autre port local
+        let jackett = "http://127.0.0.1:9117/api/v2.0/indexers/all/results/torznab/api?apikey=x";
+        assert!(link_allowed(jackett, "http://127.0.0.1:9117/dl/indexer/?jackett_apikey=x&path=y"));
+        assert!(!link_allowed(jackett, "http://127.0.0.1:8080/admin"));
     }
 
     #[test]

@@ -275,3 +275,17 @@ mod dest_tests {
         assert_eq!(serde_json::to_string(&Dest::StorageTo).unwrap(), "\"storageTo\"");
     }
 }
+
+#[cfg(test)]
+mod write_tests {
+    #[test]
+    fn atomic_write_replaces_the_file_and_leaves_no_temporary() {
+        let dir = std::env::temp_dir().join(format!("pocket-torrent-sandbox-{}", uuid::Uuid::new_v4().simple()));
+        let path = dir.join("reglages.json");
+        super::write_atomic(&path, b"{\"a\":1}").unwrap();
+        super::write_atomic(&path, b"{\"a\":2}").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"a\":2}");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "aucun fichier temporaire laissé");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

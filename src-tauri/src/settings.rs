@@ -403,15 +403,10 @@ impl Settings {
         std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
     }
 
+    /// Écriture sûre (fichier temporaire mis sur le disque puis renommé) : une coupure de courant
+    /// ne laisse jamais un fichier de réglages vide.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        // écriture atomique : jamais de fichier de réglages à moitié écrit
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
-        std::fs::rename(tmp, path)?;
-        Ok(())
+        crate::store::write_atomic(path, &serde_json::to_vec_pretty(self)?)
     }
 
     pub fn category(&self, id: Option<&str>) -> Option<&Category> {
