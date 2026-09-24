@@ -37,9 +37,14 @@ interface WindowsSectionProps extends SectionProps {
 export function WindowsSection (props: WindowsSectionProps) {
   const { settings, update } = props
   return (
-    <Section id='s-windows' reset={resetOf(props, ['closeToTray', 'preventSleep', 'scanDownloads', 'checkUpdates'])} title='Windows' intro='Démarrage, liens magnet, fichiers .torrent et fermeture.'>
+    <Section id='s-windows' reset={resetOf(props, ['closeToTray', 'offerClipboardMagnets', 'preventSleep', 'scanDownloads', 'checkUpdates'])} title='Windows' intro='Démarrage, liens magnet, fichiers .torrent et fermeture.'>
       <Check checked={props.startWithWindows} onChange={props.onStartWithWindowsChange} label='Lancer Pocket Torrent avec Windows' help='Il démarre discrètement, en arrière-plan : son icône apparaît dans la zone de notification, en bas à droite de la barre des tâches.' />
       <Check checked={props.magnetHandler} onChange={props.onMagnetHandlerChange} label='Ouvrir les liens magnet et fichiers .torrent avec Pocket Torrent' help='Un clic sur un lien magnet dans le navigateur, ou un double-clic sur un fichier .torrent, l’ajoute ici. L’ancien programme est remis si tu décoches.' />
+      <Check
+        checked={settings.offerClipboardMagnets} onChange={(offerClipboardMagnets) => update({ offerClipboardMagnets })}
+        label='Proposer les liens magnet copiés'
+        help='En revenant sur Pocket Torrent, un lien magnet copié ailleurs (navigateur, messagerie…) est proposé à l’ajout. Seuls les liens magnet sont retenus du presse-papiers.'
+      />
       <Check checked={settings.closeToTray} onChange={(closeToTray) => update({ closeToTray })} label='Continuer en arrière-plan quand je ferme la fenêtre' help='Les téléchargements continuent et l’icône reste dans la zone de notification (en bas à droite de la barre des tâches). Pour quitter : clic droit sur l’icône, puis Quitter.' />
       <Check
         checked={settings.preventSleep}

@@ -166,6 +166,7 @@ export interface Settings {
   seedWhenDone: boolean
   seeding: { ratioLimit: number; timeLimitMinutes: number }
   closeToTray: boolean
+  offerClipboardMagnets: boolean
   preventSleep: boolean
   scanDownloads: boolean
   checkUpdates: boolean
@@ -229,6 +230,8 @@ export const api = {
   magnet: (id: string) => invoke<string>('job_magnet', { id }),
   openFolder: (id: string) => invoke<void>('open_job_folder', { id }),
   takeLaunchLinks: () => invoke<string[]>('take_launch_links'),
+  /** Lien magnet copié ailleurs, à proposer au retour sur la fenêtre (sinon `null`). */
+  clipboardMagnet: () => invoke<{ link: string; name: string | null } | null>('clipboard_magnet'),
   /** Redirection de port par le VPN (NAT-PMP) : port obtenu ou dernière erreur. */
   forwardingView: () => invoke<{ enabled: boolean; port: number | null; error: string | null }>('forwarding_view'),
   /** Premier lancement : proposer d'ouvrir les liens magnet et .torrent avec Pocket Torrent ? */

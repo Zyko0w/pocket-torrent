@@ -276,8 +276,64 @@ pub(super) fn magnet_has_discreet_source(link: &str) -> bool {
     })
 }
 
+/// Lien magnet trouvé dans le presse-papiers, proposé à l'ajout.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardMagnet {
+    pub link: String,
+    pub name: Option<String>,
+}
+
+/// Premier lien magnet valable d'un texte copié (une ligne, 8 000 caractères au plus) et son empreinte.
+pub(super) fn magnet_in_text(text: &str) -> Option<(String, String, Option<String>)> {
+    let link = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    if link.len() > 8000 || !link.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("magnet:?")) {
+        return None;
+    }
+    let magnet = librqbit::Magnet::parse(link).ok()?;
+    let hash = magnet.as_id20()?.as_string();
+    Some((link.to_owned(), hash, magnet.name))
+}
+
+impl Manager {
+    /// Au retour sur la fenêtre : lien magnet copié ailleurs, à proposer une seule fois, s'il
+    /// n'est pas déjà dans la liste. Le reste du presse-papiers n'est jamais renvoyé à l'interface.
+    pub fn clipboard_magnet(&self) -> Option<ClipboardMagnet> {
+        if !self.settings.read().offer_clipboard_magnets {
+            return None;
+        }
+        let (link, hash, name) = magnet_in_text(&system::read_clipboard_text(8192)?)?;
+        let mut offered = self.clipboard_offered.lock();
+        if offered.as_deref() == Some(hash.as_str()) {
+            return None;
+        }
+        *offered = Some(hash.clone());
+        drop(offered);
+        let data = self.data.lock();
+        let listed = data.torrents.get(&hash).is_some_and(|e| !e.removed)
+            || data.pending.iter().any(|p| magnet_hash(&p.link).as_deref() == Some(hash.as_str()));
+        (!listed).then_some(ClipboardMagnet { link, name })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_real_magnet_is_taken_from_the_clipboard() {
+        let hex = "magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a&dn=Film%202026";
+        let (link, hash, name) = super::magnet_in_text(&format!("  {hex}  \nautre ligne")).unwrap();
+        assert_eq!(link, hex);
+        assert_eq!(hash, "e8812d0e9b24a9a82a1376d50f2b786ee6ea797a");
+        assert_eq!(name.as_deref(), Some("Film 2026"));
+        // empreinte en base32 (autre forme courante)
+        assert!(super::magnet_in_text("MAGNET:?xt=urn:btih:5CAS3DLLG52O3GUFK5OG6QKJVU4Z7SGS").is_some());
+        // pas un magnet, magnet invalide, texte énorme, magnet noyé dans un message
+        for text in ["mot de passe : hunter22", "magnet:?xt=urn:btih:zz", "", "salut regarde magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a"] {
+            assert!(super::magnet_in_text(text).is_none(), "{text}");
+        }
+        assert!(super::magnet_in_text(&format!("{hex}&tr={}", "a".repeat(9000))).is_none());
+    }
+
     #[test]
     fn discreet_mode_needs_https_tracker_or_direct_peer() {
         let udp = "magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a&tr=udp://t.org:1337/announce&tr=http://t.org/a";

@@ -115,6 +115,7 @@ pub fn run() {
             commands::delete_job,
             commands::should_ask_link_handler,
             commands::forwarding_view,
+            commands::clipboard_magnet,
             commands::answer_link_handler,
             commands::open_project_page,
             commands::clear_finished,

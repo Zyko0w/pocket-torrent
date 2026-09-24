@@ -17,6 +17,7 @@ import { SettingsView, type SettingsTab } from './components/SettingsView'
 import { ToastProvider, useToast } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
 import { LinkHandlerPrompt } from './components/LinkHandlerPrompt'
+import { ClipboardPrompt } from './components/ClipboardPrompt'
 import { DropZone } from './components/DropZone'
 import { ShutdownBanner, ShutdownToggle } from './components/PowerControls'
 
@@ -358,6 +359,7 @@ export default function App () {
               <div className='banner danger' role='alert'><WarningCircle size={16} /> Le moteur de téléchargement ne répond pas.</div>
             )}
             <UpdateBanner />
+            <ClipboardPrompt onEdit={(link) => { setView('active'); setPrefill(link) }} onAdded={() => { setView('active'); refresh() }} />
             <ShutdownBanner overview={overview} refresh={refresh} />
             {overview?.vpn.state === 'blocked' && view !== 'settings' && (
               <div className='banner danger' role='status'>

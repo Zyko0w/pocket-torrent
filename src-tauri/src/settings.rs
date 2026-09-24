@@ -42,6 +42,9 @@ pub struct Settings {
     /// Cherche une nouvelle version au démarrage (GitHub Releases) et la propose, sans
     /// jamais l'installer d'office. Seule connexion de l'appli qui ne concerne pas un transfert.
     pub check_updates: bool,
+    /// Propose d'ajouter un lien magnet copié ailleurs, au retour sur la fenêtre (le presse-papiers
+    /// n'est lu qu'à ce moment-là, et seul un lien magnet en est retenu).
+    pub offer_clipboard_magnets: bool,
     /// Question « ouvrir les liens magnet avec Pocket Torrent ? » déjà posée (premier lancement) :
     /// elle ne revient plus, le choix se change ensuite dans les réglages.
     pub link_handler_asked: bool,
@@ -339,6 +342,7 @@ impl Default for Settings {
             scan_downloads: false,
             check_updates: true,
             link_handler_asked: false,
+            offer_clipboard_magnets: true,
             magnet_previous: None,
             torrent_previous: None,
             storage_to: StorageToSettings::default(),

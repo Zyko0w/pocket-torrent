@@ -48,6 +48,7 @@ pub use power::PowerView;
 pub use stats::TrafficStats;
 use tick::snapshot_progress;
 pub use transfer::TransferReport;
+pub use add::ClipboardMagnet;
 pub use forwarding::ForwardingView;
 pub use vpn::{IpCheck, VpnView};
 
@@ -266,6 +267,8 @@ pub struct Manager {
     tasks: Mutex<HashMap<String, JoinHandle<()>>>,
     /// Torrents en cours d'ajout au moteur (à ne pas confondre avec des torrents disparus).
     adding: Mutex<HashSet<String>>,
+    /// Empreinte du dernier magnet du presse-papiers déjà proposé (proposé une seule fois).
+    clipboard_offered: Mutex<Option<String>>,
     /// Recherches des infos d'un magnet en cours (par identifiant d'attente) : début et pairs trouvés.
     searches: Mutex<HashMap<String, Search>>,
     /// Répartition de la bande passante selon la priorité (voir bandwidth.rs).
@@ -380,6 +383,7 @@ impl Manager {
             tasks: Mutex::new(HashMap::new()),
             adding: Mutex::new(HashSet::new()),
             searches: Mutex::new(HashMap::new()),
+            clipboard_offered: Mutex::new(None),
             bandwidth: Mutex::new(Default::default()),
             forwarding: Mutex::new(Default::default()),
             game: Mutex::new(GameState::default()),

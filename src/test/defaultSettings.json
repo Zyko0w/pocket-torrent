@@ -29,6 +29,7 @@
     "done": true,
     "error": true
   },
+  "offerClipboardMagnets": true,
   "preventSleep": true,
   "privacy": {
     "encryption": "require",

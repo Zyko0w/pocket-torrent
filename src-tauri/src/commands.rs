@@ -227,6 +227,12 @@ pub async fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> 
     state.manager.save_settings(input).await.map_err(message)
 }
 
+/// Au retour sur la fenêtre : lien magnet copié ailleurs à proposer (jamais le reste du presse-papiers).
+#[tauri::command]
+pub async fn clipboard_magnet(state: State<'_, AppState>) -> CommandResult<Option<crate::manager::ClipboardMagnet>> {
+    Ok(state.manager.clipboard_magnet())
+}
+
 /// Redirection de port par le VPN : activée, port obtenu, dernière erreur.
 #[tauri::command]
 pub async fn forwarding_view(state: State<'_, AppState>) -> CommandResult<crate::manager::ForwardingView> {

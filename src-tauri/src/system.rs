@@ -90,6 +90,11 @@ pub fn copy_text(text: &str) -> anyhow::Result<()> {
     imp::copy_text(text)
 }
 
+/// Texte du presse-papiers Windows (au plus `max_chars` caractères), `None` s'il n'y a pas de texte.
+pub fn read_clipboard_text(max_chars: usize) -> Option<String> {
+    imp::read_clipboard_text(max_chars)
+}
+
 fn current_exe() -> anyhow::Result<PathBuf> {
     std::env::current_exe().context("chemin du programme introuvable")
 }
@@ -235,6 +240,38 @@ mod imp {
             })();
             CloseClipboard();
             result
+        }
+    }
+
+    pub fn read_clipboard_text(max_chars: usize) -> Option<String> {
+        use windows_sys::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
+        use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+        const CF_UNICODETEXT: u32 = 13;
+        // SAFETY: presse-papiers ouvert puis refermé ; lecture bornée par la taille du bloc mémoire
+        // (et par `max_chars`), jamais au-delà même sans zéro final.
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return None;
+            }
+            let text = (|| {
+                let handle = GetClipboardData(CF_UNICODETEXT);
+                if handle.is_null() {
+                    return None;
+                }
+                let data = GlobalLock(handle).cast::<u16>();
+                if data.is_null() {
+                    return None;
+                }
+                let units = (GlobalSize(handle) / 2).min(max_chars);
+                let slice = std::slice::from_raw_parts(data, units);
+                let len = slice.iter().position(|&c| c == 0).unwrap_or(units);
+                let text = String::from_utf16_lossy(&slice[..len]);
+                GlobalUnlock(handle);
+                Some(text)
+            })();
+            CloseClipboard();
+            text
         }
     }
 
@@ -524,6 +561,9 @@ mod imp {
     }
     pub fn copy_text(_text: &str) -> anyhow::Result<()> {
         anyhow::bail!("disponible seulement sous Windows")
+    }
+    pub fn read_clipboard_text(_max_chars: usize) -> Option<String> {
+        None
     }
     pub fn start_with_windows_enabled() -> bool {
         false
