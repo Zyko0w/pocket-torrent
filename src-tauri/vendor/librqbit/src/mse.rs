@@ -5,7 +5,7 @@
 //! Aucune signature BitTorrent en clair ne transite : ni « BitTorrent protocol », ni l'empreinte du torrent
 //! (seule son empreinte hachée avec le secret partagé circule).
 //!
-//! Ajouté par Torrent Cloud.
+//! Ajouté par Pocket Torrent.
 
 use std::io::IoSliceMut;
 use std::pin::Pin;

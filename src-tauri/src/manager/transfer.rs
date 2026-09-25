@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 
 use super::*;
 
-const FORMAT: &str = "torrent-cloud-liste";
+const FORMAT: &str = "pocket-torrent-liste";
 const VERSION: u32 = 1;
 /// Plafond du fichier importé (des milliers de .torrent tiennent largement dedans).
 const MAX_IMPORT_BYTES: u64 = 512 * 1024 * 1024;
@@ -129,7 +129,7 @@ impl Manager {
         let directs: Vec<ExportedDirect> = data
             .directs
             .iter()
-            .filter(|d| d.common.finished_at.is_none() && !d.is_legacy_1fichier())
+            .filter(|d| d.common.finished_at.is_none())
             .map(|d| ExportedDirect {
                 link: d.link.clone(),
                 name: d.name.clone(),
@@ -151,8 +151,8 @@ impl Manager {
             bail!("Fichier trop gros pour une liste Pocket Torrent.");
         }
         let text = std::fs::read(path).context("fichier illisible")?;
-        let file: ListFile = serde_json::from_slice(&text)
-            .context("ce n'est pas une liste exportée par Pocket Torrent (ou Torrent Cloud)")?;
+        let file: ListFile =
+            serde_json::from_slice(&text).context("ce n'est pas une liste exportée par Pocket Torrent")?;
         if file.format != FORMAT || file.version > VERSION {
             bail!("Liste d'un format inconnu (exportée par une version plus récente ?).");
         }

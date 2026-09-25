@@ -14,17 +14,10 @@ pub enum Secret {
 impl Secret {
     fn target(self) -> &'static str {
         match self {
-            Secret::WireguardConfig => "TorrentCloud/wireguard-conf",
-            Secret::StorageToToken => "TorrentCloud/storage-to-token",
-            Secret::StorageToVisitor => "TorrentCloud/storage-to-visitor",
+            Secret::WireguardConfig => "PocketTorrent/wireguard-conf",
+            Secret::StorageToToken => "PocketTorrent/storage-to-token",
+            Secret::StorageToVisitor => "PocketTorrent/storage-to-visitor",
         }
-    }
-}
-
-/// Efface les clés Cloudflare R2 laissées par les versions qui géraient R2 (retiré en 0.2.1).
-pub fn forget_legacy() {
-    for target in ["TorrentCloud/r2-access-key-id", "TorrentCloud/r2-secret-access-key"] {
-        imp::delete(target);
     }
 }
 

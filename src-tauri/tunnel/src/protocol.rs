@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SERVICE_NAME: &str = "TorrentCloudTunnel";
+pub const SERVICE_NAME: &str = "PocketTorrentTunnel";
 pub const SERVICE_DISPLAY_NAME: &str = "Pocket Torrent – tunnel WireGuard";
-pub const PIPE_NAME: &str = r"\\.\pipe\TorrentCloudTunnel";
+pub const PIPE_NAME: &str = r"\\.\pipe\PocketTorrentTunnel";
 /// Nom de la carte réseau créée (doit correspondre à `settings::WIREGUARD_ADAPTER`).
-pub const ADAPTER_NAME: &str = "TorrentCloud";
+pub const ADAPTER_NAME: &str = "PocketTorrent";
 /// Change quand le protocole change : l'application propose alors de réinstaller le service.
 pub const PROTOCOL_VERSION: u32 = 1;
 

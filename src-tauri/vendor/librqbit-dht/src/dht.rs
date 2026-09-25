@@ -573,7 +573,7 @@ impl<C: RecursiveRequestCallbacks> RecursiveRequest<C> {
 pub struct DhtState {
     id: Id20,
     /// Port externe obtenu par UPnP (0 = aucun) : annoncé à la place du port d'écoute, que la
-    /// box a pu refuser (Torrent Cloud).
+    /// box a pu refuser (Pocket Torrent).
     announce_port_override: AtomicU16,
     next_transaction_id: AtomicU16,
 
@@ -983,7 +983,7 @@ impl DhtWorker {
     }
 
     async fn bootstrap_hostname(&self, hostname: &str) -> crate::Result<()> {
-        // Torrent Cloud : résolveur remplaçable (DNS chiffré par le VPN)
+        // Pocket Torrent : résolveur remplaçable (DNS chiffré par le VPN)
         let addrs = librqbit_dualstack_sockets::resolve::lookup_host_port(hostname)
             .await
             .map_err(|err| Error::lookup(hostname, err))?;

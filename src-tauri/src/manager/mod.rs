@@ -59,7 +59,6 @@ pub use vpn::{IpCheck, VpnView};
 const MB: u64 = 1024 * 1024;
 /// Dossier de travail des téléchargements à envoyer en ligne (dans le dossier de téléchargement).
 const UPLOAD_WORK_DIR: &str = ".envoi-en-ligne";
-const LEGACY_1FICHIER: &str = "1fichier n'est plus pris en charge : supprime ce téléchargement de la liste.";
 
 // ------------------------------------------------------------------ vues
 
@@ -362,20 +361,8 @@ impl Manager {
         };
         let engine = Arc::new(Engine::start(&settings, &data_dir, binding, &network).await?);
         let store_path = data_dir.join("jobs.json");
-        let mut data = StoreData::load(&store_path);
+        let data = StoreData::load(&store_path);
         remove_old_files(&data_dir.join(add::DROPPED_DIR), Duration::from_secs(7 * 24 * 3600));
-        // 1fichier n'est plus pris en charge : les anciens téléchargements inachevés sont arrêtés
-        let mut migrated = false;
-        for entry in data.directs.iter_mut() {
-            if entry.is_legacy_1fichier() && entry.common.finished_at.is_none() && entry.common.error.is_none() {
-                entry.common.error = Some(LEGACY_1FICHIER.to_owned());
-                entry.common.hold = None;
-                migrated = true;
-            }
-        }
-        if migrated {
-            let _ = data.save(&store_path);
-        }
 
         let manager = Arc::new(Self {
             app,

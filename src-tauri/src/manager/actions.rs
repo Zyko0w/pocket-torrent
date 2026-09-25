@@ -90,9 +90,6 @@ impl Manager {
                     if entry.common.finished_at.is_some() {
                         bail!("Ce téléchargement est déjà terminé.");
                     }
-                    if entry.is_legacy_1fichier() {
-                        bail!(LEGACY_1FICHIER);
-                    }
                     entry.common.error = None;
                     entry.common.error_notified = false;
                     entry.common.warning = None;

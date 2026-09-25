@@ -241,7 +241,7 @@ impl<H: PeerConnectionHandler> PeerConnection<H> {
         )
         .await?;
 
-        // Torrent Cloud : chiffrement MSE/PE avant la poignée de main BitTorrent
+        // Pocket Torrent : chiffrement MSE/PE avant la poignée de main BitTorrent
         use crate::mse::EncryptionMode;
         let (mut read, mut write) = match self.connector.encryption() {
             EncryptionMode::Disabled => (read, write),

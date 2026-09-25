@@ -230,7 +230,7 @@ optional = true
 [dependencies.parking_lot]
 version = "0.12"
 
-# Torrent Cloud : échange de clés du chiffrement MSE/PE
+# Pocket Torrent : échange de clés du chiffrement MSE/PE
 [dependencies.num-bigint]
 version = "0.4"
 

@@ -41,7 +41,7 @@ export function sortJobs (jobs: Job[], key: SortKey): Job[] {
   }
 }
 
-const SORT_STORAGE = 'torrent-cloud:sort'
+const SORT_STORAGE = 'pocket-torrent:sort'
 
 /** Tri mémorisé d'une ouverture à l'autre (confort seulement : ignoré si le stockage échoue). */
 export function loadSort (): SortKey {

@@ -1,4 +1,4 @@
-//! NAT-PMP (RFC 6886), ajouté pour Torrent Cloud : l'équivalent d'UPnP sur les box qui ne
+//! NAT-PMP (RFC 6886), ajouté pour Pocket Torrent : l'équivalent d'UPnP sur les box qui ne
 //! parlent que ce protocole (routeurs Apple, certains autres). Même principe : on demande à la
 //! passerelle de rediriger un port externe vers notre port d'écoute, TCP et UDP.
 //!

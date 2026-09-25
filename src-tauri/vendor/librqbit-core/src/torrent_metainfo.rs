@@ -150,7 +150,7 @@ where
     }
 }
 
-/// Torrent Cloud : un composant de chemin qui ne peut être qu'un simple nom dans son dossier.
+/// Pocket Torrent : un composant de chemin qui ne peut être qu'un simple nom dans son dossier.
 /// Caractères interdits par Windows remplacés par « _ », noms réservés (CON, NUL…) préfixés,
 /// points et espaces finaux retirés, et jamais « . » ni « .. » ni vide.
 pub fn safe_component(name: &str) -> String {
@@ -195,7 +195,7 @@ where
 
     /// Convert path components into a PathBuf, for use with local FS.
     ///
-    /// Torrent Cloud : chaque composant est rendu sûr pour le système de fichiers. Sous Windows,
+    /// Pocket Torrent : chaque composant est rendu sûr pour le système de fichiers. Sous Windows,
     /// un nom comme « D:dossier » faisait sortir le fichier du dossier de téléchargement
     /// (chemin relatif à un lecteur), et « : » ouvrait des flux de données alternatifs.
     pub fn to_pathbuf(&self) -> PathBuf {

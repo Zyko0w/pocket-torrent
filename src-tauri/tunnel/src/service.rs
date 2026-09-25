@@ -114,12 +114,6 @@ fn install_dir() -> anyhow::Result<PathBuf> {
     Ok(known_folder(KnownFolder::ProgramFiles)?.join("Pocket Torrent").join("Tunnel"))
 }
 
-/// Dossier du service installé par les versions nommées « Torrent Cloud » (jusqu'à la 0.1.1) :
-/// retiré à la réinstallation et à la désinstallation.
-fn legacy_install_dir() -> anyhow::Result<PathBuf> {
-    Ok(known_folder(KnownFolder::ProgramFiles)?.join("Torrent Cloud").join("Tunnel"))
-}
-
 fn valid_sid(sid: &str) -> bool {
     sid.starts_with("S-1-") && sid.len() < 200 && sid[2..].chars().all(|c| c.is_ascii_digit() || c == '-')
 }
@@ -178,15 +172,6 @@ pub fn install(user_sid: &str) -> anyhow::Result<()> {
     )
     .context("gestionnaire de services inaccessible (droits administrateur ?)")?;
     stop_and_delete(&manager)?;
-    // ancien dossier (versions « Torrent Cloud ») : le service vient d'être arrêté et supprimé
-    if let Ok(legacy) = legacy_install_dir()
-        && legacy.exists()
-    {
-        let _ = std::fs::remove_dir_all(&legacy);
-        if let Some(parent) = legacy.parent() {
-            let _ = std::fs::remove_dir(parent);
-        }
-    }
 
     let dir = install_dir()?;
     std::fs::create_dir_all(&dir)?;
@@ -219,16 +204,15 @@ pub fn uninstall() -> anyhow::Result<()> {
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
         .context("gestionnaire de services inaccessible (droits administrateur ?)")?;
     stop_and_delete(&manager)?;
-    for dir in [install_dir(), legacy_install_dir()].into_iter().flatten() {
-        for _ in 0..20 {
-            if std::fs::remove_dir_all(&dir).is_ok() || !dir.exists() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(250));
+    let dir = install_dir()?;
+    for _ in 0..20 {
+        if std::fs::remove_dir_all(&dir).is_ok() || !dir.exists() {
+            break;
         }
-        if let Some(parent) = dir.parent() {
-            let _ = std::fs::remove_dir(parent);
-        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    if let Some(parent) = dir.parent() {
+        let _ = std::fs::remove_dir(parent);
     }
     Ok(())
 }

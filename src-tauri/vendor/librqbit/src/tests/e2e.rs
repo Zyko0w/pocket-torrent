@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-/// Choking activé dans le test (Torrent Cloud) : `E2E_UPLOAD_SLOTS=4`.
+/// Choking activé dans le test (Pocket Torrent) : `E2E_UPLOAD_SLOTS=4`.
 fn e2e_upload_slots() -> Option<usize> {
     std::env::var("E2E_UPLOAD_SLOTS")
         .ok()

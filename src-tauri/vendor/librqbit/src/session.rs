@@ -531,7 +531,7 @@ pub struct SessionOptions {
     /// peer extended handshakes. Defaults to "rqbit X.Y.Z".
     pub client_name_and_version: Option<String>,
 
-    /// Torrent Cloud : client HTTP à utiliser pour les trackers et les .torrent distants.
+    /// Pocket Torrent : client HTTP à utiliser pour les trackers et les .torrent distants.
     pub reqwest_client: Option<reqwest::Client>,
 
     /// Client HTTP des sources web (BEP 19), construit avec `protect_webseed_client` (adresses
@@ -799,7 +799,7 @@ impl Session {
                 .unwrap_or_else(|| crate::client_name_and_version().to_owned());
 
             let reqwest_client = if let Some(client) = opts.reqwest_client.take() {
-                // Torrent Cloud : client fourni (lié au VPN, DNS chiffré, vérification des certificats hors ligne)
+                // Pocket Torrent : client fourni (lié au VPN, DNS chiffré, vérification des certificats hors ligne)
                 client
             } else {
                 let builder = if let Some(proxy_url) = proxy_url {
@@ -813,7 +813,7 @@ impl Session {
                     if let Some(bd) = opts.bind_device_name.as_ref() {
                         b = b.interface(bd);
                     }
-                    // Torrent Cloud : sous Windows, les trackers HTTP partent de l'adresse de l'interface
+                    // Pocket Torrent : sous Windows, les trackers HTTP partent de l'adresse de l'interface
                     // imposée (modèle d'hôte strict : le trafic ne peut pas sortir par une autre carte).
                     #[cfg(windows)]
                     if let Some(bd) = bind_device.as_ref() {
@@ -1064,7 +1064,7 @@ impl Session {
             bail!("Incoming ip {incoming_ip} is not in allowlist");
         }
 
-        // Torrent Cloud : connexion chiffrée (MSE/PE) ou en clair, selon la politique de la session
+        // Pocket Torrent : connexion chiffrée (MSE/PE) ou en clair, selon la politique de la session
         let (mut reader, writer) = {
             let info_hashes: Vec<Id20> = self
                 .db
@@ -1272,7 +1272,7 @@ impl Session {
         }
         self.cancellation_token.cancel();
         // this sucks, but hopefully will be enough
-        // Torrent Cloud : pendant cette attente, les redirections de ports sont retirées de la
+        // Pocket Torrent : pendant cette attente, les redirections de ports sont retirées de la
         // box (2 s au plus ; sinon elles expirent seules en 20 min)
         tokio::join!(tokio::time::sleep(Duration::from_secs(1)), async {
             // laisse les gestionnaires UPnP / NAT-PMP s'arrêter avant de passer derrière eux

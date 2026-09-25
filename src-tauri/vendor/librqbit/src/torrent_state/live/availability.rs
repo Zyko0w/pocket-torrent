@@ -1,4 +1,4 @@
-//! Disponibilité de chaque pièce dans l'essaim (ajouté pour Torrent Cloud, §4.1) : combien de
+//! Disponibilité de chaque pièce dans l'essaim (ajouté pour Pocket Torrent, §4.1) : combien de
 //! pairs connectés l'ont. Sert au choix « les plus rares d'abord » (rarest-first) : une pièce
 //! que peu de pairs possèdent risque de disparaître avec eux, on la prend tant qu'elle est là.
 //!

@@ -11,8 +11,6 @@ use tracing_subscriber::fmt::MakeWriter;
 
 const DIR: &str = "logs";
 const PREFIX: &str = "pocket-torrent";
-/// Préfixe des journaux écrits sous l'ancien nom (Torrent Cloud) : supprimés après 7 jours.
-const OLD_PREFIX: &str = "torrent-cloud.";
 
 fn log_dir(data_dir: &Path) -> PathBuf {
     data_dir.join(DIR)
@@ -23,7 +21,6 @@ fn log_dir(data_dir: &Path) -> PathBuf {
 pub fn init(data_dir: &Path) -> anyhow::Result<WorkerGuard> {
     let dir = log_dir(data_dir);
     std::fs::create_dir_all(&dir)?;
-    remove_old_name_logs(&dir);
     let appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix(PREFIX)
@@ -37,23 +34,6 @@ pub fn init(data_dir: &Path) -> anyhow::Result<WorkerGuard> {
         .with_writer(Redacting(writer))
         .init();
     Ok(guard)
-}
-
-/// Journaux de l'ancien nom : plus gérés par la rotation (autre préfixe), retirés après 7 jours.
-fn remove_old_name_logs(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    let week = std::time::Duration::from_secs(7 * 24 * 3600);
-    for path in entries.flatten().map(|e| e.path()) {
-        let old_name = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(OLD_PREFIX));
-        let expired = std::fs::metadata(&path)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.elapsed().ok())
-            .is_some_and(|age| age > week);
-        if old_name && expired {
-            let _ = std::fs::remove_file(path);
-        }
-    }
 }
 
 // ------------------------------------------------------------ masquage des secrets

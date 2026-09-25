@@ -136,7 +136,7 @@ pub enum VpnMode {
 }
 
 /// Nom de la carte réseau créée par le tunnel intégré.
-pub const WIREGUARD_ADAPTER: &str = "TorrentCloud";
+pub const WIREGUARD_ADAPTER: &str = "PocketTorrent";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]

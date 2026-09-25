@@ -49,7 +49,7 @@ const MSGID_BITFIELD: MsgId = 5;
 const MSGID_REQUEST: MsgId = 6;
 const MSGID_PIECE: MsgId = 7;
 const MSGID_CANCEL: MsgId = 8;
-// Extension Fast (BEP 6), ajoutée pour Torrent Cloud.
+// Extension Fast (BEP 6), ajoutée pour Pocket Torrent.
 const MSGID_SUGGEST: MsgId = 0x0D;
 const MSGID_HAVE_ALL: MsgId = 0x0E;
 const MSGID_HAVE_NONE: MsgId = 0x0F;

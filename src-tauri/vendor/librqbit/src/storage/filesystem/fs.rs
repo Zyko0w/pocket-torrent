@@ -131,7 +131,7 @@ impl TorrentStorage for FilesystemStorage {
         for file_details in metadata.file_infos.iter() {
             let mut full_path = self.output_folder.clone();
             let relative_path = &file_details.relative_filename;
-            // Torrent Cloud : un fichier du torrent ne peut jamais sortir du dossier de téléchargement
+            // Pocket Torrent : un fichier du torrent ne peut jamais sortir du dossier de téléchargement
             // (lecteur « D: », racine « \ », « .. »…), même si la vérification des noms évoluait.
             if !relative_path
                 .components()

@@ -314,8 +314,6 @@ mod imp {
 
     const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
     const RUN_VALUE: &str = "Pocket Torrent";
-    /// Nom de l'application jusqu'à la 0.1.1 (voir `refresh_registration`).
-    const OLD_RUN_VALUE: &str = "Torrent Cloud";
 
     const MAGNET_KEY: &str = r"Software\Classes\magnet";
     const MAGNET_COMMAND_KEY: &str = r"Software\Classes\magnet\shell\open\command";
@@ -325,20 +323,19 @@ mod imp {
     const TORRENT_OPENWITH_KEY: &str = r"Software\Classes\.torrent\OpenWithProgids";
     /// Identifiant de type de fichier (« ProgID ») pour les .torrent : Windows a besoin d'une
     /// clé séparée de l'extension elle-même pour y accrocher l'icône et la commande d'ouverture.
-    const PROG_ID: &str = "TorrentCloud.Torrent";
-    const PROG_ID_KEY: &str = r"Software\Classes\TorrentCloud.Torrent";
-    const PROG_ID_COMMAND_KEY: &str = r"Software\Classes\TorrentCloud.Torrent\shell\open\command";
-    const PROG_ID_ICON_KEY: &str = r"Software\Classes\TorrentCloud.Torrent\DefaultIcon";
+    const PROG_ID: &str = "PocketTorrent.Torrent";
+    const PROG_ID_KEY: &str = r"Software\Classes\PocketTorrent.Torrent";
+    const PROG_ID_COMMAND_KEY: &str = r"Software\Classes\PocketTorrent.Torrent\shell\open\command";
+    const PROG_ID_ICON_KEY: &str = r"Software\Classes\PocketTorrent.Torrent\DefaultIcon";
 
     /// « Capacités » façon Windows (nom, description, icône) : sans ça, Pocket Torrent apparaît
     /// sans nom ni icône dans les listes « Ouvrir avec » et « Applications par défaut ».
-    const TORRENT_CLOUD_KEY: &str = r"Software\TorrentCloud";
-    const CAPABILITIES_KEY: &str = r"Software\TorrentCloud\Capabilities";
-    const CAPABILITIES_FILE_ASSOC_KEY: &str = r"Software\TorrentCloud\Capabilities\FileAssociations";
-    const CAPABILITIES_URL_ASSOC_KEY: &str = r"Software\TorrentCloud\Capabilities\URLAssociations";
+    const APP_KEY: &str = r"Software\PocketTorrent";
+    const CAPABILITIES_KEY: &str = r"Software\PocketTorrent\Capabilities";
+    const CAPABILITIES_FILE_ASSOC_KEY: &str = r"Software\PocketTorrent\Capabilities\FileAssociations";
+    const CAPABILITIES_URL_ASSOC_KEY: &str = r"Software\PocketTorrent\Capabilities\URLAssociations";
     const REGISTERED_APPS_KEY: &str = r"Software\RegisteredApplications";
     const REGISTERED_APPS_VALUE: &str = "Pocket Torrent";
-    const OLD_REGISTERED_APPS_VALUE: &str = "Torrent Cloud";
     const APP_NAME: &str = "Pocket Torrent";
 
     fn hkcu() -> RegKey {
@@ -426,14 +423,12 @@ mod imp {
     fn unregister_capabilities() {
         if let Ok(registered) = hkcu().open_subkey_with_flags(REGISTERED_APPS_KEY, KEY_SET_VALUE) {
             let _ = registered.delete_value(REGISTERED_APPS_VALUE);
-            let _ = registered.delete_value(OLD_REGISTERED_APPS_VALUE);
         }
-        let _ = hkcu().delete_subkey_all(TORRENT_CLOUD_KEY);
+        let _ = hkcu().delete_subkey_all(APP_KEY);
     }
 
-    /// Après une mise à jour qui change le nom de l'application (Torrent Cloud → Pocket Torrent)
-    /// ou son dossier d'installation : le démarrage avec Windows et les liens magnet / .torrent,
-    /// s'ils étaient activés, sont remis sur l'exe actuel et sous le nouveau nom. Rien n'est
+    /// Après une mise à jour qui change le dossier d'installation : le démarrage avec Windows et
+    /// les liens magnet / .torrent, s'ils étaient activés, sont remis sur l'exe actuel. Rien n'est
     /// activé qui ne l'était pas. Pas en version de développement : l'exe de développement
     /// prendrait la place de l'application installée.
     pub fn refresh_registration() -> anyhow::Result<()> {
@@ -442,19 +437,12 @@ mod imp {
         }
         let exe = current_exe()?;
         let exe_name = exe.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-        // commande posée par une version précédente : même exe (ou l'ancien, torrent-cloud.exe),
-        // dossier éventuellement différent
-        let is_ours = |command: &str| {
-            let command = command.to_lowercase();
-            [exe_name.as_str(), "torrent-cloud.exe"].iter().any(|name| command.contains(&format!("\\{name}\"")))
-        };
+        // commande posée par une version précédente : même exe, dossier éventuellement différent
+        let is_ours = |command: &str| command.to_lowercase().contains(&format!("\\{exe_name}\""));
 
         if let Ok(run) = hkcu().open_subkey_with_flags(RUN_KEY, KEY_READ | KEY_SET_VALUE) {
             let value = |name: &str| run.get_value::<String, _>(name).ok().filter(|c| is_ours(c));
-            let enabled = value(RUN_VALUE).is_some() || value(OLD_RUN_VALUE).is_some();
-            if value(OLD_RUN_VALUE).is_some() {
-                run.delete_value(OLD_RUN_VALUE)?;
-            }
+            let enabled = value(RUN_VALUE).is_some();
             let wanted = our_command(&exe, HIDDEN_ARG);
             if enabled && value(RUN_VALUE).as_deref() != Some(wanted.as_str()) {
                 run.set_value(RUN_VALUE, &wanted)?;
@@ -477,9 +465,6 @@ mod imp {
         if magnet_stale || caps_stale {
             register_capabilities(&exe)?;
             write_prog_id(&exe)?;
-            if let Ok(apps) = hkcu().open_subkey_with_flags(REGISTERED_APPS_KEY, KEY_SET_VALUE) {
-                let _ = apps.delete_value(OLD_REGISTERED_APPS_VALUE);
-            }
             notify_associations_changed();
             tracing::info!("liens magnet et fichiers .torrent remis sur {}", exe.display());
         }

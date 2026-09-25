@@ -64,7 +64,7 @@ features = ["net"]
 [dependencies.tracing]
 version = "0.1.41"
 
-# Torrent Cloud : liaison à une interface sous Windows (IP_UNICAST_IF)
+# Pocket Torrent : liaison à une interface sous Windows (IP_UNICAST_IF)
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
 features = [

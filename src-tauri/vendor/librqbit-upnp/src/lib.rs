@@ -427,7 +427,7 @@ pub fn parse_upnp_discover_response(
 /// Adresses IPv4 d'où envoyer la recherche : chaque carte active (hors boucle locale et hors
 /// 169.254.x.x, adresses automatiques sans réseau). Liée à 0.0.0.0, la recherche partait par la
 /// carte que Windows choisit pour le multicast, parfois une carte inactive : la box ne
-/// répondait qu'après plusieurs tentatives d'une minute (Torrent Cloud).
+/// répondait qu'après plusieurs tentatives d'une minute (Pocket Torrent).
 fn ssdp_source_addresses() -> Vec<Ipv4Addr> {
     let addrs: Vec<Ipv4Addr> = NetworkInterface::show()
         .unwrap_or_default()
@@ -893,7 +893,7 @@ mod tests {
         }
     }
 
-    /// Vraie box (Torrent Cloud) : le port 64418 est refusé par les Freebox en IPv4 partagée ;
+    /// Vraie box (Pocket Torrent) : le port 64418 est refusé par les Freebox en IPv4 partagée ;
     /// le gestionnaire doit trouver seul un port externe accepté. Ignoré par défaut.
     #[tokio::test]
     #[ignore]
@@ -904,7 +904,7 @@ mod tests {
         let sink = got.clone();
         let opts = crate::UpnpPortForwarderOptions {
             lease_duration: Duration::from_secs(120),
-            description: "Torrent Cloud test".into(),
+            description: "Pocket Torrent test".into(),
             on_external_port: Some(Arc::new(move |internal, external| {
                 *sink.lock().unwrap() = Some((internal, external));
             })),
@@ -917,7 +917,7 @@ mod tests {
         assert!(result.is_some(), "aucune redirection obtenue");
     }
 
-    /// Diagnostic sur la vraie box (Torrent Cloud) : rejoue découverte, choix de l'IP locale et
+    /// Diagnostic sur la vraie box (Pocket Torrent) : rejoue découverte, choix de l'IP locale et
     /// AddPortMapping, et affiche tout. Ignoré par défaut ; la redirection expire en 60 s.
     #[tokio::test]
     #[ignore]
@@ -958,7 +958,7 @@ mod tests {
                         port,
                         "TCP",
                         Duration::from_secs(60),
-                        "Torrent Cloud test",
+                        "Pocket Torrent test",
                     )
                     .await;
                     eprintln!(

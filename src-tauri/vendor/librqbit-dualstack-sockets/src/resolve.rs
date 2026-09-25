@@ -1,4 +1,4 @@
-//! Résolution de noms remplaçable (ajout de Torrent Cloud).
+//! Résolution de noms remplaçable (ajout de Pocket Torrent).
 //!
 //! Par défaut : résolveur du système. L'application peut installer le sien (DNS chiffré passant par le VPN)
 //! pour que les noms des trackers et des nœuds DHT ne fuient pas en clair vers le fournisseur d'accès.

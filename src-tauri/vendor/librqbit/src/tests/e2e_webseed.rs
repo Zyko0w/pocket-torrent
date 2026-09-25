@@ -1,4 +1,4 @@
-//! Sources web (BEP 19, Torrent Cloud) : un torrent sans aucun pair, dont la clé `url-list`
+//! Sources web (BEP 19, Pocket Torrent) : un torrent sans aucun pair, dont la clé `url-list`
 //! pointe vers un petit serveur HTTP local qui gère les requêtes partielles (Range). Le client
 //! doit tout télécharger depuis ce serveur, pièces à cheval sur deux fichiers comprises.
 

@@ -1,4 +1,4 @@
-//! Redirections de ports ouvertes par ce programme (ajouté pour Torrent Cloud) : tenues à jour
+//! Redirections de ports ouvertes par ce programme (ajouté pour Pocket Torrent) : tenues à jour
 //! par les gestionnaires UPnP et NAT-PMP, pour les retirer de la box à la fermeture au lieu de
 //! les laisser expirer seules. Seules les redirections créées ici sont retirées, jamais celles
 //! faites à la main.

@@ -126,7 +126,6 @@ impl Manager {
         self.data.lock().directs.push(DirectEntry {
             id,
             link: link.to_owned(),
-            kind: None,
             limit_kbps: options.limit_kbps,
             name: None,
             total_bytes: 0,

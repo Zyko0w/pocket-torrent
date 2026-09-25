@@ -39,7 +39,7 @@ pub struct ConnectionOptions {
     // TCP outgoing connections are enabled by default
     pub enable_tcp: bool,
     pub peer_opts: Option<PeerConnectionOptions>,
-    /// Torrent Cloud : chiffrement MSE/PE des connexions entre pairs.
+    /// Pocket Torrent : chiffrement MSE/PE des connexions entre pairs.
     pub encryption: crate::mse::EncryptionMode,
 }
 

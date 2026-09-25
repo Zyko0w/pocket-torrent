@@ -1,4 +1,4 @@
-//! Sources web (BEP 19, « GetRight »), ajoutées pour Torrent Cloud : le .torrent peut donner des
+//! Sources web (BEP 19, « GetRight »), ajoutées pour Pocket Torrent : le .torrent peut donner des
 //! adresses HTTP où les mêmes fichiers sont hébergés (clé `url-list` : distributions Linux,
 //! archive.org…). Chaque source se comporte comme un pair qui aurait toutes les pièces :
 //! elle réserve une pièce dans le même sélecteur que les pairs, la télécharge par requêtes

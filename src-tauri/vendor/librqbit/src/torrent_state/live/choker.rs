@@ -1,4 +1,4 @@
-//! Étranglement des pairs (choking, BEP 3), ajouté pour Torrent Cloud : librqbit débloquait
+//! Étranglement des pairs (choking, BEP 3), ajouté pour Pocket Torrent : librqbit débloquait
 //! tous les pairs dès la connexion, l'envoi était donc éparpillé entre tous au lieu d'aller en
 //! priorité à ceux qui nous envoient le plus en retour.
 //!

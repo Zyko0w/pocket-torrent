@@ -61,8 +61,8 @@ pub enum Dest {
     StorageTo,
 }
 
-/// Une destination inconnue ou retirée (« r2 » des anciennes versions) devient « garder sur le
-/// PC » : rien n'est envoyé en ligne sans que l'utilisateur l'ait choisi.
+/// Une destination inconnue devient « garder sur le PC » : rien n'est envoyé en ligne sans que
+/// l'utilisateur l'ait choisi.
 impl<'de> Deserialize<'de> for Dest {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Ok(match String::deserialize(deserializer)?.as_str() {
@@ -196,9 +196,6 @@ pub struct PendingTorrent {
 pub struct DirectEntry {
     pub id: String,
     pub link: String,
-    /// Type des entrées d'avant le retrait de 1fichier (`http` ou `1fichier`), absent des nouvelles.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
     pub limit_kbps: u32,
     pub name: Option<String>,
     pub total_bytes: u64,
@@ -208,13 +205,6 @@ pub struct DirectEntry {
     pub final_path: Option<PathBuf>,
     #[serde(flatten)]
     pub common: Common,
-}
-
-impl DirectEntry {
-    /// Ancien téléchargement 1fichier : son lien mène à une page, plus à un fichier.
-    pub fn is_legacy_1fichier(&self) -> bool {
-        self.kind.as_deref() == Some("1fichier")
-    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -267,11 +257,11 @@ mod dest_tests {
     use super::Dest;
 
     #[test]
-    fn removed_destinations_fall_back_to_the_pc() {
+    fn unknown_destinations_fall_back_to_the_pc() {
         let parse = |text: &str| serde_json::from_str::<Dest>(text).unwrap();
         assert_eq!(parse("\"storageTo\""), Dest::StorageTo);
         assert_eq!(parse("\"local\""), Dest::Local);
-        assert_eq!(parse("\"r2\""), Dest::Local, "ancienne destination R2 : plus aucun envoi");
+        assert_eq!(parse("\"inconnue\""), Dest::Local, "destination inconnue : aucun envoi");
         assert_eq!(serde_json::to_string(&Dest::StorageTo).unwrap(), "\"storageTo\"");
     }
 }

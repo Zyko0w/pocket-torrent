@@ -26,7 +26,7 @@ use crate::tracker_comms_udp;
 use crate::tracker_comms_udp::UdpTrackerClient;
 use librqbit_core::hash_id::Id20;
 
-/// Torrent Cloud : n'utiliser que les trackers HTTPS (les annonces HTTP et UDP circulent en clair
+/// Pocket Torrent : n'utiliser que les trackers HTTPS (les annonces HTTP et UDP circulent en clair
 /// et révèlent au fournisseur d'accès qu'il s'agit de BitTorrent).
 static HTTPS_ONLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -132,7 +132,7 @@ async fn udp_tracker_to_socket_addrs(
 
             let mut v4: Option<SocketAddrV4> = None;
             let mut v6: Option<SocketAddrV6> = None;
-            // Torrent Cloud : résolveur remplaçable (DNS chiffré par le VPN)
+            // Pocket Torrent : résolveur remplaçable (DNS chiffré par le VPN)
             for addr in librqbit_dualstack_sockets::resolve::lookup_host(name, port)
                 .await
                 .with_context(|| format!("error looking up hostname {name}"))?

@@ -1,4 +1,4 @@
-//! Choking sous contrainte (Torrent Cloud) : un seul partageur avec UNE seule place d'envoi,
+//! Choking sous contrainte (Pocket Torrent) : un seul partageur avec UNE seule place d'envoi,
 //! face à plusieurs clients. Chacun ne peut finir qu'avec la place tournante du partageur et
 //! la réciprocité entre clients : si le choker bloquait l'envoi, le test expirerait.
 
