@@ -186,7 +186,12 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
     }
   }
 
-  const resumeLabel = job.status === 'error' ? 'Réessayer' : job.status === 'done' ? 'Partager à nouveau' : 'Reprendre'
+  // envoi sur storage.to terminé : lien du dossier complet (collection) s'il y en a un, sinon du fichier
+  const links = job.delivery?.state === 'done' ? job.delivery.links : []
+  const shareLink = links.find((l) => l.kind === 'collection') ?? links[0]
+  const linkExpired = job.delivery?.expiresAt != null && job.delivery.expiresAt < Date.now()
+
+  const resumeLabel =job.status === 'error' ? 'Réessayer' : job.status === 'done' ? 'Partager à nouveau' : 'Reprendre'
   const pauseLabel = job.status === 'seeding' ? 'Arrêter le partage' : 'Mettre en pause'
   const removeLabel = finished || job.status === 'error' ? 'Supprimer…' : 'Arrêter et supprimer…'
 
@@ -284,6 +289,14 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
                 <Pause size={16} weight='fill' />
               </button>
               )}
+          {shareLink && (
+            <button
+              type='button' className='icon-btn' title={linkExpired ? 'Lien storage.to expiré' : 'Copier le lien storage.to'}
+              aria-label='Copier le lien storage.to' disabled={linkExpired} onClick={() => run(() => copyText(shareLink.url), 'Lien storage.to copié')}
+            >
+              <LinkSimple size={18} />
+            </button>
+          )}
           <button type='button' className='icon-btn' title='Ouvrir le dossier' aria-label='Ouvrir le dossier' disabled={isPending} onClick={() => run(() => api.openFolder(job.id))}>
             <FolderOpen size={18} />
           </button>

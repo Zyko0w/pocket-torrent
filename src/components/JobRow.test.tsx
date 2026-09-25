@@ -75,6 +75,21 @@ describe('JobRow (envoi sur storage.to)', () => {
     vi.mocked(invoke).mockImplementation(async () => null)
   })
 
+  it('une fois envoyé, un bouton copie le lien du dossier complet', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    vi.mocked(invoke).mockImplementation(async () => null)
+    const delivery = {
+      state: 'done' as const, sentBytes: 20, totalBytes: 20, expiresAt: Date.now() + 86_400_000,
+      links: [
+        { name: 'Saison 1 (tous les fichiers)', size: 20, key: 'C1', url: 'https://storage.to/c/C1', kind: 'collection' as const },
+        { name: 'E01.mkv', size: 10, key: 'F1', url: 'https://storage.to/F1', kind: 'file' as const }
+      ]
+    }
+    renderRow(makeJob({ status: 'done', finishedAt: 1, delivery }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copier le lien storage.to' }))
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('copy_text', { text: 'https://storage.to/c/C1' }))
+  })
+
   it('rien à proposer en cours de téléchargement', () => {
     renderRow()
     fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
