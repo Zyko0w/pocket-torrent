@@ -75,6 +75,90 @@ mod sandbox_tests {
         engine.stop().await;
     }
 
+    /// Revérification d'un torrent à plusieurs fichiers dont un est abîmé et un autre effacé :
+    /// seules les pièces touchées sont à retélécharger (pièces à cheval sur deux fichiers comprises).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn recheck_finds_exactly_the_damaged_pieces() {
+        const PIECE: u64 = 256 * 1024;
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let pack = sandbox.root.join("source").join("pack");
+        std::fs::create_dir_all(&pack).unwrap();
+        let sizes = [("a.bin", 4 * PIECE), ("b.bin", 4 * PIECE + 100), ("c.bin", 700 * 1024)];
+        for (i, (name, len)) in sizes.iter().enumerate() {
+            let bytes: Vec<u8> = (0..*len).map(|n| (n as usize * 31 + i * 7) as u8).collect();
+            std::fs::write(pack.join(name), bytes).unwrap();
+        }
+        let options = librqbit::CreateTorrentOptions { piece_length: Some(PIECE as u32), ..Default::default() };
+        let (_, handle) = engine.session().create_and_serve_torrent(&pack, options).await.unwrap();
+        let hash = handle.info_hash().as_string();
+
+        // un octet changé au début de b (pièce 4), c effacé (pièces 8 à 10, dont la fin de b)
+        let mut b = std::fs::read(pack.join("b.bin")).unwrap();
+        b[0] ^= 0xFF;
+        std::fs::write(pack.join("b.bin"), b).unwrap();
+        std::fs::remove_file(pack.join("c.bin")).unwrap();
+
+        engine.recheck(&hash).await.unwrap();
+        loop {
+            if engine.torrents().iter().any(|t| t.info_hash == hash && t.state == EngineState::Live) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let mut files = engine.files(&hash).unwrap();
+        files.sort_by_key(|f| f.index);
+        let progress: Vec<u64> = files.iter().map(|f| f.progress_bytes).collect();
+        assert_eq!(progress, vec![4 * PIECE, 3 * PIECE, 0]);
+        engine.stop().await;
+    }
+
+    /// Mesure de la revérification (§8) : `cargo test --release --lib -- --ignored --nocapture
+    /// recheck_speed`. Taille réglable par `BENCH_MIB` (1024 par défaut). Fichier pseudo-aléatoire
+    /// dans le bac à sable ; relu depuis le cache de Windows, donc c'est surtout le calcul des
+    /// empreintes qui est mesuré.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn recheck_speed() {
+        use std::io::Write;
+        let mib: usize = std::env::var("BENCH_MIB").ok().and_then(|v| v.parse().ok()).unwrap_or(1024);
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let content = sandbox.root.join("source").join("gros fichier.bin");
+        std::fs::create_dir_all(content.parent().unwrap()).unwrap();
+        {
+            let mut file = std::io::BufWriter::new(std::fs::File::create(&content).unwrap());
+            let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+            let mut block = vec![0u8; 1024 * 1024];
+            for _ in 0..mib {
+                for word in block.chunks_exact_mut(8) {
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    word.copy_from_slice(&x.to_le_bytes());
+                }
+                file.write_all(&block).unwrap();
+            }
+        }
+        let started = Instant::now();
+        let (_, handle) = engine.session().create_and_serve_torrent(&content, Default::default()).await.unwrap();
+        println!("création du .torrent ({mib} Mio) : {:?}", started.elapsed());
+        let hash = handle.info_hash().as_string();
+        let started = Instant::now();
+        engine.recheck(&hash).await.unwrap();
+        loop {
+            let done =
+                engine.torrents().iter().any(|t| t.info_hash == hash && t.state == EngineState::Live && t.finished);
+            if done {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let elapsed = started.elapsed();
+        println!("revérification : {elapsed:?} ({:.0} Mio/s)", mib as f64 / elapsed.as_secs_f64());
+        engine.stop().await;
+    }
+
     #[tokio::test]
     async fn per_torrent_download_limit_reaches_the_running_engine() {
         let sandbox = Sandbox::new();
