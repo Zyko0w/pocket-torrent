@@ -107,6 +107,14 @@ enum SupportedTracker {
     Http(Url),
 }
 
+impl SupportedTracker {
+    fn url(&self) -> &Url {
+        match self {
+            SupportedTracker::Udp(u) | SupportedTracker::Http(u) => u,
+        }
+    }
+}
+
 impl std::fmt::Debug for SupportedTracker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -172,10 +180,13 @@ impl TrackerComms {
 
     // TODO: fix too many args
     #[allow(clippy::too_many_arguments)]
+    /// `trackers` dans l'ordre du .torrent. `failover` (Pocket Torrent, torrents privés, BEP 12) :
+    /// un seul tracker à la fois, les suivants en secours ; sinon tous en même temps.
     pub fn start(
         info_hash: Id20,
         peer_id: Id20,
-        trackers: HashSet<Url>,
+        trackers: Vec<Url>,
+        failover: bool,
         stats: Box<dyn TorrentStatsProvider>,
         force_interval: Option<Duration>,
         announce_port: std::sync::Arc<std::sync::atomic::AtomicU16>,
@@ -192,8 +203,10 @@ impl TrackerComms {
                 status.skipped(url.as_str(), reason);
             }
         };
+        let mut unique = HashSet::new();
         let trackers = trackers
             .into_iter()
+            .filter(|t| unique.insert(t.clone()))
             .filter(|t| {
                 let keep = !https_only || t.scheme() == "https";
                 if !keep {
@@ -235,8 +248,12 @@ impl TrackerComms {
                 status,
             });
             let mut futures = FuturesUnordered::new();
-            for tracker in trackers {
-                futures.push(comms.add_tracker(tracker, &udp_client))
+            if failover && trackers.len() > 1 {
+                futures.push(comms.task_failover(trackers, udp_client.clone()).boxed());
+            } else {
+                for tracker in trackers {
+                    futures.push(comms.add_tracker(tracker, &udp_client).boxed())
+                }
             }
             while !(futures.is_empty()) {
                 tokio::select! {
@@ -285,6 +302,97 @@ impl TrackerComms {
                     .left_future()
             }
         }
+    }
+
+    /// Pocket Torrent : torrents privés (BEP 12, BEP 27). Un tracker privé liste souvent plusieurs
+    /// adresses du même site ; annoncer sur toutes à la fois lui ferait compter les envois en
+    /// double. Un seul tracker à la fois, dans l'ordre du .torrent ; s'il ne répond pas, le
+    /// suivant prend le relais. Quand tous ont échoué d'affilée, attente croissante (1 à 10 min).
+    async fn task_failover(
+        &self,
+        trackers: Vec<SupportedTracker>,
+        udp_client: UdpTrackerClient,
+    ) -> anyhow::Result<()> {
+        const STANDBY: &str = "en secours : utilisé si le tracker actif ne répond plus";
+        for tracker in &trackers[1..] {
+            self.status.skipped(tracker.url().as_str(), STANDBY);
+        }
+        let mut index = 0;
+        let mut failed_in_row = 0usize;
+        let mut started = HashSet::<Url>::new();
+        let mut prev_udp_addrs = std::collections::HashMap::<Url, UdpTrackerResolveResult>::new();
+        loop {
+            let tracker = &trackers[index];
+            let url = tracker.url();
+            let result = match tracker {
+                SupportedTracker::Http(url) => {
+                    let event = started
+                        .insert(url.clone())
+                        .then_some(tracker_comms_http::TrackerRequestEvent::Started);
+                    self.tracker_one_request_http(url, event).await
+                }
+                SupportedTracker::Udp(url) => {
+                    self.tracker_one_request_udp_url(url, &udp_client, &mut prev_udp_addrs)
+                        .await
+                }
+            };
+            match result {
+                Ok(interval) => {
+                    failed_in_row = 0;
+                    tokio::time::sleep(self.force_tracker_interval.unwrap_or(interval)).await;
+                }
+                Err(err) => {
+                    debug!(tracker = %url, "failover: {err:#}");
+                    failed_in_row += 1;
+                    let next = (index + 1) % trackers.len();
+                    let full_rounds = failed_in_row / trackers.len();
+                    let wait = if failed_in_row % trackers.len() == 0 {
+                        Duration::from_secs((60u64 << full_rounds.min(4)).min(600))
+                    } else {
+                        Duration::ZERO
+                    };
+                    self.status.failure(url.as_str(), &format!("{err:#}"), None);
+                    if next != index {
+                        self.status.connecting(trackers[next].url().as_str());
+                    }
+                    index = next;
+                    tokio::time::sleep(wait).await;
+                }
+            }
+        }
+    }
+
+    /// Une annonce UDP (résolution comprise), pour `task_failover`.
+    async fn tracker_one_request_udp_url(
+        &self,
+        url: &Url,
+        client: &UdpTrackerClient,
+        prev_addrs: &mut std::collections::HashMap<Url, UdpTrackerResolveResult>,
+    ) -> anyhow::Result<Duration> {
+        let (host, port) = (
+            url.host().context("missing host")?,
+            url.port().context("missing port")?,
+        );
+        let addrs = match udp_tracker_to_socket_addrs(host, port).await {
+            Ok(addrs) => {
+                prev_addrs.insert(url.clone(), addrs);
+                addrs
+            }
+            Err(err) => *prev_addrs.get(url).ok_or(err)?,
+        };
+        let first = match addrs {
+            UdpTrackerResolveResult::One(addr) => addr,
+            UdpTrackerResolveResult::Two(v4, _) => v4.into(),
+        };
+        let result = match (self.tracker_one_request_udp(first, client).await, addrs) {
+            (Err(_), UdpTrackerResolveResult::Two(_, v6)) => {
+                self.tracker_one_request_udp(v6.into(), client).await
+            }
+            (result, _) => result,
+        };
+        let (sleep, peers, swarm) = result?;
+        self.status.success(url.as_str(), peers, Some(swarm), sleep);
+        Ok(sleep)
     }
 
     async fn task_single_tracker_monitor_http(&self, tracker_url: Url) -> anyhow::Result<()> {
@@ -613,10 +721,90 @@ mod tests {
         );
     }
 
+    /// Faux tracker HTTP qui compte ses annonces ; `ok` : réponse valide (un pair), sinon HTTP 500.
+    async fn counting_tracker(ok: bool, hits: Arc<std::sync::atomic::AtomicUsize>) -> Url {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let mut request = [0u8; 4096];
+                    let _ = socket.read(&mut request).await;
+                    let answer: &[u8] = if ok {
+                        b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nd8:intervali1800e5:peers6:\x7f\x00\x00\x01\x1a\xe1e"
+                    } else {
+                        b"HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n"
+                    };
+                    let _ = socket.write_all(answer).await;
+                });
+            }
+        });
+        Url::parse(&format!("http://{addr}/announce")).unwrap()
+    }
+
+    /// Torrent privé : un seul tracker à la fois. Le premier est en panne : le deuxième prend le
+    /// relais, le troisième (en secours) n'est jamais contacté.
+    #[tokio::test]
+    async fn private_torrents_use_one_tracker_at_a_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let hits: Vec<Arc<AtomicUsize>> = (0..3).map(|_| Arc::new(AtomicUsize::new(0))).collect();
+        let trackers = vec![
+            counting_tracker(false, hits[0].clone()).await,
+            counting_tracker(true, hits[1].clone()).await,
+            counting_tracker(true, hits[2].clone()).await,
+        ];
+        let hash = Id20::new([8; 20]);
+        let udp = UdpTrackerClient::new(Default::default(), None)
+            .await
+            .unwrap();
+        let mut stream = TrackerComms::start(
+            hash,
+            Id20::new([9; 20]),
+            trackers.clone(),
+            true,
+            Box::new(()),
+            None,
+            Arc::new(std::sync::atomic::AtomicU16::new(6881)),
+            reqwest::Client::new(),
+            udp,
+        )
+        .unwrap();
+        let peer = tokio::time::timeout(Duration::from_secs(10), stream.next())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(peer, "127.0.0.1:6881".parse().unwrap());
+        assert_eq!(hits[0].load(Ordering::SeqCst), 1, "premier essayé une fois");
+        assert_eq!(hits[1].load(Ordering::SeqCst), 1, "deuxième : relais");
+        assert_eq!(
+            hits[2].load(Ordering::SeqCst),
+            0,
+            "troisième jamais contacté"
+        );
+        let states: Vec<_> = crate::status::tracker_statuses(&hash)
+            .into_iter()
+            .map(|s| (s.url, s.state))
+            .collect();
+        use crate::status::TrackerState::*;
+        assert!(
+            states.contains(&(trackers[0].to_string(), Failing)),
+            "{states:?}"
+        );
+        assert!(
+            states.contains(&(trackers[1].to_string(), Working)),
+            "{states:?}"
+        );
+        assert!(
+            states.contains(&(trackers[2].to_string(), Skipped)),
+            "{states:?}"
+        );
+    }
+
     #[tokio::test]
     async fn trackers_per_torrent_are_bounded() {
         let hash = Id20::new([5; 20]);
-        let trackers: HashSet<Url> = (0..5000)
+        let trackers: Vec<Url> = (0..5000)
             .map(|i| Url::parse(&format!("wss://t{i}.example/announce")).unwrap())
             .chain(
                 (0..5000)
@@ -630,6 +818,7 @@ mod tests {
             hash,
             Id20::new([6; 20]),
             trackers,
+            false,
             Box::new(()),
             None,
             Arc::new(std::sync::atomic::AtomicU16::new(6881)),

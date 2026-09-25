@@ -356,6 +356,51 @@ impl AddTorrentResponse {
     }
 }
 
+/// Pocket Torrent : range `trackers` dans l'ordre des annonces du .torrent (`announce-list`, sinon
+/// `announce`) ; ceux qui n'y figurent pas (ajoutés à la main) passent après, par ordre alphabétique.
+fn order_like_torrent(trackers: &mut [url::Url], torrent_bytes: Option<Bytes>) {
+    let order: Vec<url::Url> = torrent_bytes
+        .and_then(|bytes| torrent_from_bytes(bytes).ok())
+        .map(|torrent| {
+            torrent
+                .meta
+                .iter_announce()
+                .filter_map(|b| std::str::from_utf8(b.as_ref()).ok())
+                .filter_map(|s| url::Url::parse(s).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    trackers.sort_by_key(|u| {
+        (
+            order.iter().position(|o| o == u).unwrap_or(usize::MAX),
+            u.to_string(),
+        )
+    });
+}
+
+#[cfg(test)]
+mod tracker_order_tests {
+    #[test]
+    fn private_trackers_keep_the_torrent_order() {
+        // .torrent minimal : announce-list [[c], [a, b]], puis tracker ajouté à la main
+        let torrent = b"d8:announce17:http://c/announce13:announce-listll17:http://c/announceel17:http://a/announce17:http://b/announceee4:infod6:lengthi1e4:name1:x12:piece lengthi16384e6:pieces20:aaaaaaaaaaaaaaaaaaaaee";
+        let url = |s: &str| url::Url::parse(s).unwrap();
+        let mut trackers = vec![
+            url("http://z/announce"),
+            url("http://a/announce"),
+            url("http://b/announce"),
+            url("http://c/announce"),
+        ];
+        super::order_like_torrent(&mut trackers, Some(bytes::Bytes::from_static(torrent)));
+        let got: Vec<&str> = trackers.iter().map(|u| u.host_str().unwrap()).collect();
+        assert_eq!(got, ["c", "a", "b", "z"]);
+        // .torrent illisible : ordre alphabétique, stable d'un lancement à l'autre
+        super::order_like_torrent(&mut trackers, None);
+        let got: Vec<&str> = trackers.iter().map(|u| u.host_str().unwrap()).collect();
+        assert_eq!(got, ["a", "b", "c", "z"]);
+    }
+}
+
 pub fn read_local_file_including_stdin(filename: &str) -> anyhow::Result<Vec<u8>> {
     let mut buf = Vec::new();
     if filename == "-" {
@@ -1730,9 +1775,16 @@ impl Session {
         announce: bool,
     ) -> Option<PeerStream> {
         let is_private = t.with_metadata(|m| m.info.info().private).unwrap_or(false);
+        // Pocket Torrent : la liste gardée par le torrent n'a plus d'ordre ; celui du .torrent
+        // compte pour un torrent privé (un tracker à la fois, les suivants en secours)
+        let mut trackers: Vec<url::Url> = t.shared().trackers.iter().cloned().collect();
+        if is_private {
+            let torrent_bytes = t.with_metadata(|m| m.torrent_bytes.clone()).ok();
+            order_like_torrent(&mut trackers, torrent_bytes);
+        }
         self.make_peer_rx(
             t.info_hash(),
-            t.shared().trackers.iter().cloned().collect(),
+            trackers,
             announce,
             t.shared().options.force_tracker_interval,
             t.shared().options.initial_peers.clone(),
@@ -1781,13 +1833,9 @@ impl Session {
             trackers.clear();
         }
 
-        if is_private && trackers.len() > 1 {
-            warn!(
-                ?info_hash,
-                "private trackers are not fully implemented, so using only the first tracker"
-            );
-            trackers.truncate(1);
-        } else if !self.disable_trackers {
+        // Pocket Torrent : torrent privé, trackers du .torrent seulement, un à la fois (voir
+        // `TrackerComms::start`, `failover`) ; avant, seul le premier était gardé
+        if !is_private && !self.disable_trackers {
             trackers.extend(self.trackers.iter().cloned());
         }
 
@@ -1798,7 +1846,8 @@ impl Session {
         let tracker_rx = TrackerComms::start(
             info_hash,
             self.peer_id,
-            trackers.into_iter().collect(),
+            trackers,
+            is_private,
             Box::new(tracker_rx_stats),
             force_tracker_interval,
             self.announce_port.clone(),

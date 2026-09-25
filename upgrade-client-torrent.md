@@ -162,7 +162,7 @@ Détail des correctifs appliqués au moteur vendorisé : voir `src-tauri/vendor/
 | Protocole d'extension | BEP 10 | P0 | ✅ | Base de PEX, des métadonnées ; `yourip` rendu optionnel (mode confidentialité renforcée, §9.6). |
 | Tracker HTTP(S) | BEP 3 | P0 | ✅ | TLS vérifié (certificats épinglés), DNS chiffré. |
 | Tracker UDP | BEP 15 | P0 | ✅ | Résolution par DNS chiffré (correctif `librqbit-tracker-comms`). |
-| Plusieurs trackers | BEP 12 | P0 | ⚠️ | Fonctionne, mais un seul tracker utilisé pour les torrents privés (limitation connue de librqbit, pas de notre fait). |
+| Plusieurs trackers | BEP 12 | P0 | ✅ | Torrents publics : tous à la fois. Torrents privés (**25/09**) : un seul à la fois dans l'ordre du .torrent, les suivants en secours (avant : seul le premier, tiré au hasard après une pause). |
 | DHT | BEP 5 | P0 | ✅ | Table de routage persistante (`dht.json`) entre deux sessions. |
 | DHT IPv6 | BEP 32 | P0 | ✅ | `librqbit-dht` génère et répond aux `nodes6` (`generate_compact_nodes_both`, `bprotocol.rs`) ; sockets IPv6 gérées par `librqbit-dualstack-sockets`. |
 | Tracker IPv6 | BEP 7 | P0 | ✅ | `tracker_comms_http.rs` (`peers6: Peers<'a, SocketAddrV6>`) parse la réponse `peers6` des trackers HTTP. |
