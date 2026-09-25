@@ -26,6 +26,48 @@ const SSDP_MULTICAST_IP: SocketAddr =
 pub const SSDP_SEARCH_WAN_IPCONNECTION_ST: &str = "urn:schemas-upnp-org:service:WANIPConnection:1";
 pub const SSDP_SEARCH_ROOT_ST: &str = "upnp:rootdevice";
 
+/// Pocket Torrent : n'importe quel appareil du réseau local peut répondre à la recherche SSDP
+/// (Wi-Fi public, appareil piraté). Limites : réponses de 1 Mio au plus, 10 s au plus, et
+/// 32 appareils par recherche ; voir aussi `parse_upnp_discover_response` et
+/// `get_wan_ip_control_urls` (adresses tenues à l'appareil qui a répondu).
+const MAX_UPNP_RESPONSE_BYTES: usize = 1024 * 1024;
+const UPNP_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_DEVICES_PER_SEARCH: usize = 32;
+
+fn upnp_client() -> Client {
+    Client::builder()
+        .timeout(UPNP_HTTP_TIMEOUT)
+        .no_proxy()
+        .build()
+        .unwrap_or_default()
+}
+
+/// Corps d'une réponse d'un appareil du réseau local, lu par morceaux et plafonné.
+async fn read_capped(mut response: reqwest::Response) -> anyhow::Result<String> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if body.len() + chunk.len() > MAX_UPNP_RESPONSE_BYTES {
+            bail!("UPnP response too large");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Même machine : adresse écrite dans `url` égale à `ip` (IPv4 éventuellement notée en IPv6).
+fn url_is_on(url: &Url, ip: IpAddr) -> bool {
+    let canonical = |ip: IpAddr| match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        v4 => v4,
+    };
+    let host = match url.host() {
+        Some(url::Host::Ipv4(v4)) => IpAddr::V4(v4),
+        Some(url::Host::Ipv6(v6)) => IpAddr::V6(v6),
+        _ => return false,
+    };
+    matches!(url.scheme(), "http" | "https") && canonical(host) == canonical(ip)
+}
+
 pub fn make_ssdp_search_request(kind: &str) -> String {
     format!(
         "M-SEARCH * HTTP/1.1\r\n\
@@ -144,7 +186,7 @@ async fn forward_port(
         lease_duration.as_secs()
     );
 
-    let response = reqwest::Client::new()
+    let response = upnp_client()
         .post(control_url)
         .header("Content-Type", "text/xml; charset=\"utf-8\"")
         .header(
@@ -157,8 +199,7 @@ async fn forward_port(
         .context("error sending")
         .map_err(ForwardError::Other)?;
     let status = response.status();
-    let text = response
-        .text()
+    let text = read_capped(response)
         .await
         .context("error reading response text")
         .map_err(ForwardError::Other)?;
@@ -305,7 +346,14 @@ impl UpnpEndpoint {
             .filter(|(_, s)| s.service_type == SERVICE_TYPE_WAN_IP_CONNECTION)
             .map(|(span, s)| (span, self.discover_response.location.join(&s.control_url)))
             .filter_map(|(span, url)| match url {
-                Ok(url) => Some((span, url)),
+                // commandes envoyées seulement à l'appareil qui a répondu (voir `url_is_on`)
+                Ok(url) if url_is_on(&url, self.discover_response.received_from.ip()) => {
+                    Some((span, url))
+                }
+                Ok(url) => {
+                    debug!("control url {url} is not on the answering device");
+                    None
+                }
                 Err(e) => {
                     debug!("bad control url: {e:#}");
                     None
@@ -321,12 +369,12 @@ pub struct UpnpDiscoverResponse {
 }
 
 pub async fn discover_services(location: Url) -> anyhow::Result<RootDesc> {
-    let response = Client::new()
+    let response = upnp_client()
         .get(location.clone())
         .send()
         .await
-        .context("failed to send GET request")?
-        .text()
+        .context("failed to send GET request")?;
+    let response = read_capped(response)
         .await
         .context("failed to read response body")?;
     trace!("received from {location}: {response}");
@@ -365,6 +413,11 @@ pub fn parse_upnp_discover_response(
     let location = location.context("missing location header")?;
     let location =
         Url::parse(location).with_context(|| format!("failed parsing location {location}"))?;
+    // la description doit être sur l'appareil qui a répondu : sinon, n'importe quel appareil
+    // du réseau local ferait lire à l'appli l'adresse de son choix (autre machine, Internet)
+    if !url_is_on(&location, received_from.ip()) {
+        bail!("location {location} is not on the answering device {received_from}");
+    }
     Ok(UpnpDiscoverResponse {
         location,
         received_from,
@@ -447,8 +500,9 @@ async fn discover_from(
     tokio::pin!(timeout);
 
     let mut discovered = 0;
+    let mut seen = HashSet::<Url>::new();
 
-    while !timed_out {
+    while !timed_out && discovered < MAX_DEVICES_PER_SEARCH {
         tokio::select! {
             _ = &mut timeout, if !timed_out => {
                 timed_out = true;
@@ -456,6 +510,8 @@ async fn discover_from(
             Ok((len, addr)) = socket.recv_from(&mut buffer), if !timed_out => {
                 let response = &buffer[..len];
                 match parse_upnp_discover_response(response, addr) {
+                    // une box répond souvent plusieurs fois (une par service)
+                    Ok(r) if !seen.insert(r.location.clone()) => {},
                     Ok(r) => {
                         tx.send(r)?;
                         discovered += 1;
@@ -746,6 +802,65 @@ impl UpnpPortForwarder {
 #[cfg(test)]
 mod tests {
     use quick_xml::de::from_str;
+
+    fn ssdp(location: &str) -> Vec<u8> {
+        format!("HTTP/1.1 200 OK\r\nLOCATION: {location}\r\nST: upnp:rootdevice\r\n\r\n")
+            .into_bytes()
+    }
+
+    /// Appareil du réseau local qui veut faire lire une autre adresse à l'appli.
+    #[test]
+    fn ssdp_answers_must_point_to_the_answering_device() {
+        let from: std::net::SocketAddr = "192.168.1.254:1900".parse().unwrap();
+        let ok = crate::parse_upnp_discover_response(
+            &ssdp("http://192.168.1.254:49152/rootDesc.xml"),
+            from,
+        );
+        assert!(ok.is_ok());
+        for location in [
+            "http://192.168.1.10:8080/admin",
+            "http://127.0.0.1:1234/x",
+            "https://attaquant.example/rootDesc.xml",
+            "http://box.lan/rootDesc.xml",
+            "file:///C:/Windows/win.ini",
+        ] {
+            assert!(
+                crate::parse_upnp_discover_response(&ssdp(location), from).is_err(),
+                "{location}"
+            );
+        }
+        // IPv4 notée en IPv6 (socket double pile)
+        let mapped: std::net::SocketAddr = "[::ffff:192.168.1.254]:1900".parse().unwrap();
+        assert!(
+            crate::parse_upnp_discover_response(&ssdp("http://192.168.1.254:5000/d.xml"), mapped)
+                .is_ok()
+        );
+    }
+
+    /// Faux appareil en bac à sable (127.0.0.1) qui renvoie une description sans fin.
+    #[tokio::test]
+    async fn endless_device_description_is_cut() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request).await;
+            let _ = socket
+                .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
+                .await;
+            let block = vec![b'<'; 64 * 1024];
+            for _ in 0..1024 {
+                if socket.write_all(&block).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let url = url::Url::parse(&format!("http://{addr}/rootDesc.xml")).unwrap();
+        let err = crate::discover_services(url).await.err().unwrap();
+        assert!(format!("{err:#}").contains("too large"), "{err:#}");
+    }
 
     #[test]
     fn soap_fault_is_parsed() {
