@@ -5,8 +5,7 @@
 #
 # Le mot de passe de la clé est demandé sans écho, gardé seulement le temps du build, jamais écrit.
 # Résultat dans src-tauri\target\release\publication\v<version>\ : installateur (sans espace dans
-# le nom, GitHub les remplace), sa signature, latest.json et les SBOM (sbom-*.cdx.json), prêts
-# pour `gh release create`.
+# le nom, GitHub les remplace), sa signature et latest.json, prêts pour `gh release create`.
 
 param(
     [Parameter(Mandatory = $true)][string]$Notes,
@@ -56,24 +55,6 @@ $latest = [ordered]@{
 }
 # UTF-8 sans BOM : l'updater lit du JSON strict
 [IO.File]::WriteAllText("$root\$out\latest.json", ($latest | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
-
-# SBOM (CycloneDX 1.5) : liste publiée de toutes les dépendances embarquées, application
-# (Rust, cible Windows), service du tunnel et interface (paquets npm hors outils de dev)
-if (Get-Command cargo-cyclonedx -ErrorAction SilentlyContinue) {
-    Push-Location src-tauri
-    try {
-        cargo cyclonedx -q -f json --spec-version 1.5 --target x86_64-pc-windows-msvc --override-filename sbom
-        if ($LASTEXITCODE -ne 0) { throw "SBOM Rust impossible" }
-        Move-Item -Force "sbom.json" "$root\$out\sbom-application.cdx.json"
-        Move-Item -Force "tunnel\sbom.json" "$root\$out\sbom-tunnel.cdx.json"
-    }
-    finally { Pop-Location }
-} else {
-    Write-Host "cargo-cyclonedx absent (cargo install cargo-cyclonedx --locked) : SBOM Rust non produit" -ForegroundColor Yellow
-}
-# via cmd : la redirection de Windows PowerShell réencoderait le JSON en UTF-16
-cmd /c "npm sbom --sbom-format cyclonedx --omit dev > `"$root\$out\sbom-interface.cdx.json`""
-if ($LASTEXITCODE -ne 0) { throw "SBOM de l'interface impossible" }
 
 # calcul direct (.NET) : Get-FileHash manque quand Windows PowerShell est lancé depuis PowerShell 7
 $sha = [Security.Cryptography.SHA256]::Create()
