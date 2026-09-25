@@ -834,3 +834,117 @@ mod schedule_tests {
         assert!(!s.active_at(1, 12 * 60));
     }
 }
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::*;
+
+    fn base() -> Settings {
+        Settings { download_dir: PathBuf::from(r"C:\T"), ..Default::default() }
+    }
+
+    fn category(name: &str, folder: &str) -> Category {
+        Category { id: String::new(), name: name.into(), folder: folder.into() }
+    }
+
+    fn feed(url: &str) -> RssFeed {
+        RssFeed { url: url.into(), enabled: true, ..Default::default() }
+    }
+
+    /// Chaque valeur hors limites est refusée avec un message, sans rien enregistrer.
+    #[test]
+    fn every_invalid_value_is_refused() {
+        let cases: Vec<(&str, Box<dyn Fn(&mut Settings)>)> = vec![
+            ("dossier relatif", Box::new(|s| s.download_dir = "Films".into())),
+            ("dossier vide", Box::new(|s| s.download_dir = PathBuf::new())),
+            ("catégorie sans nom", Box::new(|s| s.categories = vec![category("  ", r"C:\A")])),
+            (
+                "catégorie en double",
+                Box::new(|s| s.categories = vec![category("Films", r"C:\A"), category("films", r"C:\B")]),
+            ),
+            ("catégorie relative", Box::new(|s| s.categories = vec![category("Films", "A")])),
+            ("vitesse", Box::new(|s| s.limits.down_kbps = MAX_KBPS + 1)),
+            ("vitesse jeu", Box::new(|s| s.game_mode.up_kbps = MAX_KBPS + 1)),
+            ("file", Box::new(|s| s.queue.max_active = 51)),
+            ("programme", Box::new(|s| s.game_mode.processes = vec!["calc.exe & del".into()])),
+            ("port réservé", Box::new(|s| s.torrent_port = 80)),
+            ("marge", Box::new(|s| s.disk_margin_mb = 1_000_001)),
+            ("pairs", Box::new(|s| s.max_peers_per_torrent = 10_001)),
+            ("places", Box::new(|s| s.upload_slots = 501)),
+            ("rss intervalle", Box::new(|s| s.rss.interval_minutes = 1)),
+            ("rss schéma", Box::new(|s| s.rss.feeds = vec![feed("file:///C:/x.xml")])),
+            ("rss adresse", Box::new(|s| s.rss.feeds = vec![feed("pas une adresse")])),
+            (
+                "rss regex",
+                Box::new(|s| {
+                    let mut f = feed("https://a.org/rss");
+                    f.regex = true;
+                    f.include = "(".into();
+                    s.rss.feeds = vec![f];
+                }),
+            ),
+            ("rss nombre", Box::new(|s| s.rss.feeds = (0..31).map(|_| feed("https://a.org/rss")).collect())),
+            ("en cours = final", Box::new(|s| s.incomplete_dir = r"C:\T\".into())),
+            ("en cours relatif", Box::new(|s| s.incomplete_dir = "tmp".into())),
+            ("storage.to", Box::new(|s| s.storage_to.expiry_days = 8)),
+            ("carte VPN vide", Box::new(|s| s.vpn.mode = VpnMode::Adapter)),
+            (
+                "proxy hôte",
+                Box::new(|s| {
+                    s.vpn.mode = VpnMode::Proxy;
+                    s.vpn.proxy_host = "a b;c".into();
+                    s.vpn.proxy_port = 1080;
+                }),
+            ),
+            (
+                "proxy port",
+                Box::new(|s| {
+                    s.vpn.mode = VpnMode::Proxy;
+                    s.vpn.proxy_host = "p.org".into();
+                }),
+            ),
+            ("proxy identifiant", Box::new(|s| s.vpn.proxy_user = "a\nb".into())),
+            ("extension", Box::new(|s| s.security.excluded_extensions = vec!["exe".into()])),
+            ("heure", Box::new(|s| s.schedule.end_minutes = 1440)),
+            (
+                "aucun jour",
+                Box::new(|s| {
+                    s.schedule.enabled = true;
+                    s.schedule.days.clear();
+                }),
+            ),
+            ("liste de blocage vide", Box::new(|s| s.blocklist.enabled = true)),
+        ];
+        assert!(base().normalize().is_ok());
+        for (label, change) in cases {
+            let mut settings = base();
+            change(&mut settings);
+            let err = settings.normalize().expect_err(label);
+            assert!(!err.is_empty(), "{label}");
+        }
+    }
+
+    #[test]
+    fn values_are_cleaned() {
+        let mut s = base();
+        s.categories = vec![category(" Films HD ", r"C:\F"), category("Films-HD", r"C:\G")];
+        s.game_mode.processes = vec![" cs2.exe ".into(), "".into()];
+        s.security.excluded_extensions = vec![" .EXE".into(), ".exe".into(), "".into()];
+        s.schedule.days = vec![3, 9, 1, 3];
+        s.vpn.proxy_host = " [::1] ".into();
+        let mut f = feed(" https://site.org/rss ");
+        f.category = Some("inconnue".into());
+        s.rss.feeds = vec![f];
+        s.normalize().unwrap();
+        assert_eq!(s.categories[0].name, "Films HD");
+        assert_ne!(s.categories[0].id, s.categories[1].id, "identifiants uniques");
+        assert_eq!(s.game_mode.processes, ["cs2.exe"]);
+        assert_eq!(s.security.excluded_extensions, [".exe"]);
+        assert_eq!(s.schedule.days, [1, 3]);
+        assert_eq!(s.vpn.proxy_host, "::1");
+        assert_eq!(s.rss.feeds[0].url, "https://site.org/rss");
+        assert_eq!(s.rss.feeds[0].name, "site.org", "nom tiré de l'adresse");
+        assert!(!s.rss.feeds[0].id.is_empty());
+        assert_eq!(s.rss.feeds[0].category, None, "catégorie supprimée : retirée du flux");
+    }
+}

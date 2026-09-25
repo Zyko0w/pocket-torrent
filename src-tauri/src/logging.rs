@@ -57,13 +57,33 @@ struct RedactingWriter<W>(W);
 impl<W: Write> Write for RedactingWriter<W> {
     // le formateur écrit chaque évènement d'un seul bloc : les URL ne sont jamais coupées
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write_all(redact(&String::from_utf8_lossy(buf)).as_bytes())?;
+        self.0.write_all(clean_event(&String::from_utf8_lossy(buf)).as_bytes())?;
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
     }
+}
+
+/// Un évènement = une ligne. Un nom de torrent ou une réponse de serveur ne peut pas inventer
+/// de fausses lignes (« VPN connecté ») par un retour à la ligne, ni piéger un terminal qui
+/// afficherait le journal (séquences d'échappement), ni s'afficher à l'envers (RLO).
+fn clean_event(event: &str) -> String {
+    let (body, newline) = match event.strip_suffix('\n') {
+        Some(body) => (body.strip_suffix('\r').unwrap_or(body), "\n"),
+        None => (event, ""),
+    };
+    let body: String = body
+        .chars()
+        .map(|c| match c {
+            '\n' | '\r' => '⏎',
+            '\t' => '\t',
+            c if c.is_control() || librqbit_core::torrent_metainfo::is_bidi_control(c) => '�',
+            c => c,
+        })
+        .collect();
+    redact(&body) + newline
 }
 
 fn is_url_end(c: char) -> bool {
@@ -142,11 +162,27 @@ fn latest_file(data_dir: &Path) -> anyhow::Result<Option<PathBuf>> {
     Ok(files.pop())
 }
 
+/// Fin du journal lue par `tail`.
+const TAIL_BYTES: u64 = 4 * 1024 * 1024;
+
 /// Dernières lignes du journal du jour, les plus récentes en dernier.
 pub fn tail(data_dir: &Path, max_lines: usize) -> anyhow::Result<String> {
     let Some(path) = latest_file(data_dir)? else { return Ok(String::new()) };
+    // seulement la fin du fichier : un journal d'une journée chargée n'est pas relu en entier
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let skipped = len.saturating_sub(TAIL_BYTES);
+    file.seek(SeekFrom::Start(skipped))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    let mut raw = String::from_utf8_lossy(&bytes).into_owned();
+    if skipped > 0 {
+        // première ligne coupée en route : retirée
+        raw = raw.split_once('\n').map_or_else(String::new, |(_, rest)| rest.to_owned());
+    }
     // masqué aussi à la lecture : lignes écrites par une version sans masquage
-    let text = redact(&std::fs::read_to_string(path)?);
+    let text = redact(&raw);
     let lines: Vec<&str> = text.lines().collect();
     let start = lines.len().saturating_sub(max_lines);
     Ok(lines[start..].join("\n"))
@@ -167,7 +203,41 @@ pub fn folder(data_dir: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::redact;
+    use super::{clean_event, redact};
+
+    /// Nom de torrent piégé : une seule ligne, sans séquence d'échappement ni inversion.
+    #[test]
+    fn hostile_text_cannot_forge_log_lines() {
+        let event = "2026-09-25 INFO ajout : film\n2026-09-25 INFO VPN connecté\u{1b}[2J\u{202e}exe.mp4\r\n";
+        let cleaned = clean_event(event);
+        assert_eq!(cleaned.matches('\n').count(), 1, "{cleaned:?}");
+        assert!(cleaned.ends_with('\n'));
+        assert!(!cleaned.contains('\u{1b}') && !cleaned.contains('\u{202e}') && !cleaned.contains('\r'));
+        assert_eq!(clean_event("a\tb\n"), "a\tb\n");
+    }
+
+    /// Bac à sable : journal de 10 Mio, seule la fin est lue, lignes entières.
+    #[test]
+    fn tail_reads_only_the_end_of_a_big_log() {
+        let data = std::env::temp_dir().join(format!("pocket-torrent-sandbox-{}", uuid::Uuid::new_v4().simple()));
+        let dir = data.join(super::DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut text = String::new();
+        let mut n = 0;
+        while text.len() < 10 * 1024 * 1024 {
+            text.push_str(&format!("ligne {n} ................................................\n"));
+            n += 1;
+        }
+        std::fs::write(dir.join("pocket-torrent.2026-09-25.log"), &text).unwrap();
+        let tail = super::tail(&data, 3).unwrap();
+        let lines: Vec<&str> = tail.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[2].starts_with(&format!("ligne {} ", n - 1)));
+        let many = super::tail(&data, usize::MAX).unwrap();
+        assert!(many.lines().all(|l| l.starts_with("ligne ")), "première ligne coupée retirée");
+        assert!(many.len() <= 4 * 1024 * 1024);
+        let _ = std::fs::remove_dir_all(&data);
+    }
 
     #[test]
     fn secrets_are_masked() {
