@@ -64,6 +64,7 @@ mod merge_streams;
 pub mod mse;
 mod peer_connection;
 mod peer_info_reader;
+mod peer_priority;
 mod piece_tracker;
 mod read_buf;
 mod session;

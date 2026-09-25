@@ -146,6 +146,8 @@ pub struct Session {
     /// bannit qu'après plusieurs incidents, pas figé au démarrage comme `blocklist` — grandit
     /// à l'exécution, oublié au redémarrage du moteur.
     dynamic_bans: parking_lot::Mutex<std::collections::HashMap<std::net::IpAddr, u32>>,
+    /// Pocket Torrent : notre adresse publique d'après les pairs (priorité des pairs, BEP 40).
+    pub(crate) external_ip_votes: crate::peer_priority::ExternalIpVotes,
 
     // Monitoring / tracing / logging
     pub(crate) stats: Arc<SessionStats>,
@@ -970,6 +972,7 @@ impl Session {
                 blocklist,
                 allowlist,
                 dynamic_bans: parking_lot::Mutex::new(std::collections::HashMap::new()),
+                external_ip_votes: Default::default(),
                 lsd,
             });
 

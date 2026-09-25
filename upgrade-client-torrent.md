@@ -175,7 +175,7 @@ Détail des correctifs appliqués au moteur vendorisé : voir `src-tauri/vendor/
 | µTP (LEDBAT) | BEP 29 | P0 | ✅ | Réglable, désactivé par défaut (module jeune côté moteur), voir §4. |
 | MSE/PE (obfuscation) | Vuze | P0 | ✅ | Modes désactivé/préféré/obligatoire (correctif moteur déjà en place avant cette série de sessions). |
 | Partage partiel (*upload_only*) | BEP 21 | P1 | ✅ | Annoncé quand tout ce qui est choisi est téléchargé ; un pair en partage seul est déconnecté si on a fini aussi. |
-| Priorité canonique des pairs | BEP 40 | P1 | ❌ | Non supporté par librqbit. |
+| Priorité canonique des pairs | BEP 40 | P1 | ✅ | **25/09** (correctif moteur) : adresse publique estimée d'après les pairs, pairs en attente choisis par priorité canonique. |
 
 ---
 

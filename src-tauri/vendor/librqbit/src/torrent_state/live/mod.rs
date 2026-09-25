@@ -629,8 +629,25 @@ impl TorrentStateLive {
         mut peer_queue_rx: UnboundedReceiver<SocketAddr>,
     ) -> crate::Result<()> {
         let state = self;
+        // Pocket Torrent : pairs en attente ; quand une place se libère, le prochain est choisi
+        // par priorité canonique (BEP 40, voir `peer_priority`) si notre adresse est connue
+        let mut pending = std::collections::VecDeque::new();
         loop {
-            let addr = peer_queue_rx.recv().await.ok_or(Error::TorrentIsNotLive)?;
+            if pending.is_empty() {
+                pending.push_back(peer_queue_rx.recv().await.ok_or(Error::TorrentIsNotLive)?);
+            }
+            while let Ok(addr) = peer_queue_rx.try_recv() {
+                pending.push_back(addr);
+            }
+            let ours = state.shared.session.upgrade().and_then(|s| {
+                let port = s.announce_port().unwrap_or(0);
+                s.external_ip_votes
+                    .best()
+                    .map(|ip| SocketAddr::new(ip, port))
+            });
+            let Some(addr) = crate::peer_priority::take_next(&mut pending, ours) else {
+                continue;
+            };
             if state.shared.options.disable_upload() && state.is_finished_and_no_active_streams() {
                 debug!(?addr, "ignoring peer as we are finished");
                 state.peers.mark_peer_not_needed(addr);
@@ -1262,6 +1279,11 @@ impl PeerConnectionHandler for &'_ PeerHandler {
             UPLOAD_ONLY_DISCONNECTS.fetch_add(1, Ordering::Relaxed);
             self.state.drop_not_needed_peer(self.addr);
             return Ok(());
+        }
+
+        // Pocket Torrent : ce que le pair dit voir de nous, pour la priorité des pairs (BEP 40)
+        if let (Some(yourip), Some(session)) = (&hs.yourip, self.state.shared.session.upgrade()) {
+            session.external_ip_votes.record(self.addr.ip(), yourip.0);
         }
 
         if let Some(client_name) = hs.v.as_ref().and_then(format_peer_client_name) {
