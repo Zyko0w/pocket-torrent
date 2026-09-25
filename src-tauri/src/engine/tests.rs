@@ -75,6 +75,70 @@ mod sandbox_tests {
         engine.stop().await;
     }
 
+    /// Faux serveur de liste de blocage (127.0.0.1) : compte les requêtes reçues.
+    async fn fake_blocklist(body: &'static [u8]) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().route(
+            "/liste.p2p",
+            axum::routing::get(move || {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { body }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{addr}/liste.p2p"), hits)
+    }
+
+    fn with_blocklist(sandbox: &Sandbox, source: &str) -> Settings {
+        let mut settings = Settings { download_dir: sandbox.root.join("telechargements"), ..Default::default() };
+        settings.blocklist.enabled = true;
+        settings.blocklist.source = source.to_owned();
+        settings
+    }
+
+    /// VPN exigé mais coupé : la liste de blocage ne doit pas être téléchargée sans le VPN (elle
+    /// révélerait l'adresse réelle) ; le moteur démarre quand même.
+    #[tokio::test]
+    async fn blocklist_is_never_fetched_outside_the_vpn() {
+        let sandbox = Sandbox::new();
+        let (url, hits) = fake_blocklist(b"Test:1.2.3.0-1.2.3.255\n").await;
+        let offline = Network::new(None, true, crate::dns::Resolver::new(crate::dns::Mode::Blocked));
+        let engine =
+            Engine::start(&with_blocklist(&sandbox, &url), &sandbox.root.join("donnees"), Binding::Offline, &offline)
+                .await
+                .expect("le moteur démarre sans la liste");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0, "liste téléchargée hors du VPN");
+        engine.stop().await;
+    }
+
+    /// Liste injoignable : le moteur démarre sans elle ; joignable : chargée, puis reprise de la
+    /// copie locale si elle devient injoignable.
+    #[tokio::test]
+    async fn unreachable_blocklist_does_not_stop_the_engine() {
+        let sandbox = Sandbox::new();
+        let free = Network::new(None, false, crate::dns::Resolver::new(crate::dns::Mode::Free));
+        let data = sandbox.root.join("donnees");
+        let dead = with_blocklist(&sandbox, "http://127.0.0.1:9/liste.p2p");
+        let engine = Engine::start(&dead, &data, Binding::Free, &free).await.expect("démarrage sans la liste");
+        assert!(!engine.session().blocklist.has("1.2.3.4".parse().unwrap()));
+        engine.stop().await;
+
+        let (url, hits) = fake_blocklist(b"Test:1.2.3.0-1.2.3.255\n").await;
+        let engine = Engine::start(&with_blocklist(&sandbox, &url), &data, Binding::Free, &free).await.unwrap();
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(engine.session().blocklist.has("1.2.3.4".parse().unwrap()));
+        engine.stop().await;
+
+        // même adresse, serveur tombé : la copie gardée sert encore
+        let cached = Network::new(None, true, crate::dns::Resolver::new(crate::dns::Mode::Blocked));
+        let engine = Engine::start(&with_blocklist(&sandbox, &url), &data, Binding::Offline, &cached).await.unwrap();
+        assert!(engine.session().blocklist.has("1.2.3.4".parse().unwrap()));
+        engine.stop().await;
+    }
+
     /// Revérification d'un torrent à plusieurs fichiers dont un est abîmé et un autre effacé :
     /// seules les pièces touchées sont à retélécharger (pièces à cheval sur deux fichiers comprises).
     #[tokio::test(flavor = "multi_thread")]

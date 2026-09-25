@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use async_compression::tokio::bufread::GzipDecoder;
-use futures::TryStreamExt;
 use intervaltree::IntervalTree;
 use std::iter::empty;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -8,10 +7,16 @@ use std::ops::Range;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::io::{AsyncBufRead, AsyncRead};
+use tokio::io::AsyncReadExt;
 use tokio::{io::AsyncBufReadExt, io::BufReader};
-use tokio_util::io::StreamReader;
 use tracing::trace;
 use url::Url;
+
+/// Pocket Torrent : limites de lecture d'une liste (une vraie liste P2P : quelques centaines de
+/// milliers de lignes de moins de 200 octets, quelques dizaines de Mio une fois décompressée).
+const MAX_LINE_BYTES: usize = 4096;
+const MAX_DECODED_BYTES: usize = 512 * 1024 * 1024;
+const MAX_RANGES: usize = 10_000_000;
 
 struct IntervalTreeWithSize<T> {
     t: IntervalTree<T, ()>,
@@ -58,6 +63,8 @@ impl IpRanges {
         self.v4.len + self.v6.len
     }
 
+    /// Pocket Torrent : l'application télécharge elle-même les listes en ligne (VPN, DNS chiffré)
+    /// et passe un fichier local ; cette fonction ne sert plus qu'aux adresses `file:`.
     pub async fn load_from_url(url: &str) -> Result<Self> {
         let parsed_url = Url::parse(url).context("failed to parse URL")?;
 
@@ -69,16 +76,8 @@ impl IpRanges {
             return Self::load_from_file(path).await;
         }
 
-        let response = reqwest::get(parsed_url)
-            .await
-            .context("error fetching list")?;
-        if !response.status().is_success() {
-            anyhow::bail!("error fetching list: HTTP {}", response.status());
-        }
-
-        let mut reader = StreamReader::new(response.bytes_stream().map_err(std::io::Error::other));
-        let bl = Self::create_from_stream(&mut reader).await?;
-        Ok(bl)
+        // téléchargée ici, la liste partirait par un client par défaut : hors du VPN, même coupé
+        anyhow::bail!("only file: URLs are supported, the application downloads online lists itself")
     }
 
     pub async fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -117,8 +116,25 @@ impl IpRanges {
         let mut v6 = Vec::new();
 
         let mut line = String::new();
+        let mut total = 0usize;
 
-        while reader.read_line(&mut line).await? > 0 {
+        // Pocket Torrent : lecture bornée. Sans limite, une ligne sans fin ou une archive gzip
+        // piégée (quelques Mio qui en donnent des Gio) remplissait la mémoire.
+        loop {
+            let read = (&mut *reader)
+                .take(MAX_LINE_BYTES as u64 + 1)
+                .read_line(&mut line)
+                .await?;
+            if read == 0 {
+                break;
+            }
+            if read > MAX_LINE_BYTES {
+                anyhow::bail!("list line too long");
+            }
+            total += read;
+            if total > MAX_DECODED_BYTES || v4.len() + v6.len() >= MAX_RANGES {
+                anyhow::bail!("list too large");
+            }
             match parse_ip_range(&line) {
                 Some(IpRange::V4(r)) => {
                     v4.push(r);
@@ -180,6 +196,32 @@ fn parse_ip_range(line: &str) -> Option<IpRange> {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+
+    #[tokio::test]
+    async fn hostile_lists_are_bounded() {
+        // ligne sans fin
+        let endless = vec![b'1'; MAX_LINE_BYTES * 4];
+        let err = IpRanges::create_from_stream(&mut Cursor::new(endless)).await.err().unwrap();
+        assert!(format!("{err:#}").contains("too long"), "{err:#}");
+
+        // archive gzip piégée : 600 Mio de lignes valides, quelques centaines de Kio compressées
+        use async_compression::tokio::write::GzipEncoder;
+        use tokio::io::AsyncWriteExt;
+        let mut encoder = GzipEncoder::new(Vec::new());
+        let line = b"x:1.2.3.0-1.2.3.255\n";
+        let block = line.repeat(1024 * 1024 / line.len());
+        for _ in 0..600 {
+            encoder.write_all(&block).await.unwrap();
+        }
+        encoder.shutdown().await.unwrap();
+        let bomb = encoder.into_inner();
+        assert!(bomb.len() < 8 * 1024 * 1024, "{}", bomb.len());
+        let err = IpRanges::create_from_stream(&mut Cursor::new(bomb)).await.err().unwrap();
+        assert!(format!("{err:#}").contains("too large"), "{err:#}");
+
+        // téléchargement direct par le moteur : refusé (voir `load_from_url`)
+        assert!(IpRanges::load_from_url("http://127.0.0.1:9/liste.p2p").await.is_err());
+    }
 
     use crate::tests::test_util::setup_test_logging;
 

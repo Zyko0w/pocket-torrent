@@ -94,6 +94,7 @@ pub(super) async fn create_session(
             connect.peer_opts.get_or_insert_with(Default::default).disable_yourip = true;
         }
     }
+    options.blocklist_url = local_blocklist(settings, data_dir, network).await;
     options.webseed_reqwest_client = Some(network.webseed_client(options.webseeds_https_only));
     options.reqwest_client = Some(network.http.clone());
     Session::new_with_opts(settings.download_dir.clone(), options)
@@ -149,9 +150,76 @@ pub(super) fn blocklist_url(settings: &Settings) -> Option<String> {
     url::Url::from_file_path(source).ok().map(|u| u.to_string())
 }
 
+/// Copie locale d'une liste de blocage téléchargée, et l'adresse dont elle vient.
+const BLOCKLIST_FILE: &str = "liste-de-blocage";
+const BLOCKLIST_SOURCE_FILE: &str = "liste-de-blocage.source";
+/// Taille maximale d'une liste téléchargée (les listes P2P courantes, compressées, font
+/// quelques Mio ; décompressées, quelques dizaines).
+const MAX_BLOCKLIST_BYTES: usize = 128 * 1024 * 1024;
+
+/// Liste de blocage pour le moteur, toujours sous forme de fichier local. Une liste en ligne est
+/// téléchargée ici, par le client réseau de l'appli (VPN, DNS chiffré ; VPN coupé : rien ne sort),
+/// et gardée : si elle est injoignable, la dernière copie de la même adresse sert, sinon le moteur
+/// démarre sans liste. Avant, le moteur la téléchargeait lui-même avec un client par défaut (hors
+/// du VPN, même VPN coupé) et refusait de démarrer si elle était injoignable.
+pub(super) async fn local_blocklist(settings: &Settings, data_dir: &Path, network: &Network) -> Option<String> {
+    let source = blocklist_url(settings)?;
+    if !(source.starts_with("http://") || source.starts_with("https://")) {
+        // fichier local déplacé ou effacé : moteur démarré sans liste plutôt que pas du tout
+        let exists = url::Url::parse(&source).ok().and_then(|u| u.to_file_path().ok()).is_some_and(|p| p.is_file());
+        if !exists {
+            tracing::warn!("liste de blocage introuvable ({source}), moteur démarré sans elle");
+            return None;
+        }
+        return Some(source);
+    }
+    let cache = data_dir.join(BLOCKLIST_FILE);
+    let marker = data_dir.join(BLOCKLIST_SOURCE_FILE);
+    match download_blocklist(&network.http, &source).await {
+        Ok(bytes) => {
+            let saved = crate::store::write_atomic(&cache, &bytes)
+                .and_then(|()| crate::store::write_atomic(&marker, source.as_bytes()));
+            if let Err(err) = saved {
+                tracing::warn!("liste de blocage non enregistrée : {err:#}");
+                return None;
+            }
+        }
+        Err(err) => {
+            let same_source = std::fs::read_to_string(&marker).is_ok_and(|s| s == source);
+            if !(same_source && cache.is_file()) {
+                tracing::warn!("liste de blocage injoignable, moteur démarré sans elle : {err:#}");
+                return None;
+            }
+            tracing::warn!("liste de blocage injoignable, dernière copie utilisée : {err:#}");
+        }
+    }
+    url::Url::from_file_path(&cache).ok().map(|u| u.to_string())
+}
+
+async fn download_blocklist(client: &reqwest::Client, url: &str) -> anyhow::Result<Vec<u8>> {
+    let mut response = client
+        .get(url)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|err| anyhow!("{}", err.without_url()))?;
+    if !response.status().is_success() {
+        bail!("HTTP {}", response.status());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|err| anyhow!("{}", err.without_url()))? {
+        if body.len() + chunk.len() > MAX_BLOCKLIST_BYTES {
+            bail!("liste trop grosse (plus de 128 Mio)");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 pub(super) fn free_options(settings: &Settings, data_dir: &Path) -> SessionOptions {
     SessionOptions {
-        blocklist_url: blocklist_url(settings),
+        // voir `local_blocklist`, appelée par `create_session`
+        blocklist_url: None,
         peer_limit: (settings.max_peers_per_torrent > 0).then_some(settings.max_peers_per_torrent as usize),
         upload_slots: (settings.upload_slots > 0).then_some(settings.upload_slots as usize),
         upnp_description: Some("Pocket Torrent".into()),
