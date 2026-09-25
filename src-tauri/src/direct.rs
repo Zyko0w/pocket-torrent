@@ -12,7 +12,7 @@ use librqbit::Session;
 use parking_lot::Mutex;
 use percent_encoding::percent_decode_str;
 use reqwest::StatusCode;
-use reqwest::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, RANGE};
+use reqwest::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, RANGE};
 use tokio::io::AsyncWriteExt;
 
 const USER_AGENT: &str =
@@ -106,6 +106,14 @@ impl Network {
 
 /// Octets reçus par tous les liens directs depuis le lancement (statistiques cumulées).
 pub static RECEIVED_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// Lien écrit avec une adresse de ce PC ou du réseau local (NAS, box) : l'utilisateur vise
+/// volontairement ce réseau. Tout autre lien passe par le client limité à Internet
+/// (`Network::public_client`), pour qu'un site ne puisse pas rediriger vers la box ou un NAS,
+/// ni se résoudre vers eux (« DNS rebinding »).
+pub fn is_local_link(link: &str) -> bool {
+    url::Url::parse(link).is_ok_and(|u| crate::rss::is_local_host(&u))
+}
 
 pub fn is_http_url(link: &str) -> bool {
     url::Url::parse(link).is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
@@ -253,6 +261,14 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
     let retry = |error: anyhow::Error| Attempt::Retry { error };
     let mut response = request.send().await.map_err(|e| retry(anyhow::Error::from(e.without_url())))?;
     let status = response.status();
+    // « .part » déjà complet (coupure juste avant le renommage) : rien à recevoir
+    if status == StatusCode::RANGE_NOT_SATISFIABLE
+        && received > 0
+        && received == progress.total.load(Ordering::Relaxed)
+        && let Some(part) = existing_part
+    {
+        return finish(job, part, received);
+    }
     if !status.is_success() {
         let error = anyhow!("le serveur a répondu HTTP {status}");
         return Err(if matches!(status.as_u16(), 401 | 404 | 410) {
@@ -263,6 +279,15 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
     }
 
     let resume = received > 0 && status == StatusCode::PARTIAL_CONTENT;
+    // reprise : le serveur doit renvoyer exactement la suite, sinon ces octets seraient collés
+    // au mauvais endroit (fichier corrompu). Le « .part » est vidé et tout est repris du début.
+    if resume && range_start(&response) != Some(received) {
+        if let Some(part) = &existing_part {
+            let _ = std::fs::OpenOptions::new().write(true).open(part).and_then(|f| f.set_len(0));
+        }
+        progress.received.store(0, Ordering::Relaxed);
+        return Err(retry(anyhow!("le serveur n'a pas renvoyé la suite demandée : reprise depuis le début")));
+    }
     if !resume {
         received = 0;
     }
@@ -271,7 +296,7 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
     if progress.total.load(Ordering::Relaxed) == 0
         && let Some(length) = length
     {
-        progress.total.store(length + received, Ordering::Relaxed);
+        progress.total.store(length.saturating_add(received), Ordering::Relaxed);
     }
 
     let part = match existing_part {
@@ -311,6 +336,8 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
         .map_err(|e| Attempt::Fatal(DownloadError::Failed(e)))?;
 
     let mut pace = Pace::new();
+    let space_dir = job.part_dir.as_ref().unwrap_or(&job.dir);
+    let mut since_space_check = 0u64;
     loop {
         let chunk = match response.chunk().await {
             Ok(Some(chunk)) => chunk,
@@ -334,6 +361,15 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
         received += chunk.len() as u64;
         progress.received.store(received, Ordering::Relaxed);
         RECEIVED_TOTAL.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+        // taille inconnue ou disque partagé avec les torrents : place revérifiée tous les 64 Mio
+        since_space_check += chunk.len() as u64;
+        if since_space_check >= SPACE_CHECK_EVERY {
+            since_space_check = 0;
+            if let Err(msg) = (job.check_space)(space_dir, 0) {
+                let _ = file.flush().await;
+                return Err(Attempt::Fatal(DownloadError::NoSpace(msg)));
+            }
+        }
     }
     file.flush().await.map_err(|e| retry(e.into()))?;
     drop(file);
@@ -342,7 +378,21 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
     if total > 0 && received < total {
         return Err(retry(anyhow!("connexion coupée avant la fin")));
     }
+    finish(job, part, received)
+}
 
+/// Octets reçus entre deux vérifications de la place libre.
+const SPACE_CHECK_EVERY: u64 = 64 * 1024 * 1024;
+
+/// Début de la plage renvoyée (`Content-Range: bytes 100-199/200`).
+fn range_start(response: &reqwest::Response) -> Option<u64> {
+    let value = response.headers().get(CONTENT_RANGE)?.to_str().ok()?;
+    value.trim().strip_prefix("bytes")?.trim_start().split('-').next()?.trim().parse().ok()
+}
+
+/// Range le « .part » terminé sous son nom final.
+fn finish(job: &Download, part: PathBuf, received: u64) -> Result<PathBuf, Attempt> {
+    let progress = &job.progress;
     // « film.mkv.part » → « film.mkv »
     let part_name = part.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let final_name = part_name.strip_suffix(".part").unwrap_or(&part_name).to_owned();
@@ -457,5 +507,260 @@ mod incomplete_dir_tests {
         assert_eq!(std::fs::read_dir(&incomplete).unwrap().count(), 0, "aucun « .part » laissé");
         engine.stop().await;
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod pentest_tests {
+    //! Test d'intrusion : serveur web hostile (127.0.0.1, lancé par le test) contre les
+    //! téléchargements directs. Dossiers temporaires dédiés ; rien ne sort de ce PC.
+    use super::*;
+    use std::net::SocketAddr;
+    use tokio::io::AsyncReadExt;
+
+    const LEN: usize = 300_000;
+
+    fn body() -> Vec<u8> {
+        (0..LEN).map(|i| (i * 7 % 251) as u8).collect()
+    }
+
+    const HOSTILE_NAMES: &[&str] = &[
+        "attachment; filename*=UTF-8''..%2F..%2F..%2Fevil.exe",
+        r#"attachment; filename="..\..\Windows\evil.dll""#,
+        r#"attachment; filename="C:\Users\Public\x.bat""#,
+        r#"attachment; filename="\\serveur\partage\x.exe""#,
+        r#"attachment; filename="rapport.pdf:flux.exe""#,
+        r#"attachment; filename="CON""#,
+        "attachment; filename*=UTF-8''film%E2%80%AE4pm.exe",
+    ];
+
+    async fn respond(stream: &mut tokio::net::TcpStream, head: &str, body: &[u8]) {
+        let _ = stream.write_all(format!("HTTP/1.1 {head}\r\nConnection: close\r\n\r\n").as_bytes()).await;
+        let _ = stream.write_all(body).await;
+    }
+
+    /// Faux serveur : noms piégés, reprises fausses, flux sans fin, taille absurde.
+    async fn hostile_server() -> SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let request = String::from_utf8_lossy(&request).to_ascii_lowercase();
+                    let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                    let range: Option<usize> = request
+                        .lines()
+                        .find_map(|l| l.strip_prefix("range: bytes="))
+                        .and_then(|r| r.trim().trim_end_matches('-').parse().ok());
+                    let body = body();
+                    match (path.as_str(), range) {
+                        (p, _) if p.starts_with("/nom/") => {
+                            let n: usize = p[5..].parse().unwrap();
+                            let head =
+                                format!("200 OK\r\nContent-Length: 1\r\nContent-Disposition: {}", HOSTILE_NAMES[n]);
+                            respond(&mut stream, &head, b"x").await;
+                        }
+                        ("/reprise", Some(r)) => {
+                            let head = format!(
+                                "206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {r}-{}/{LEN}",
+                                LEN - r,
+                                LEN - 1
+                            );
+                            respond(&mut stream, &head, &body[r..]).await;
+                        }
+                        // ignore la plage demandée et renvoie tout en 206
+                        ("/reprise-fausse", Some(_)) => {
+                            let head = format!(
+                                "206 Partial Content\r\nContent-Length: {LEN}\r\nContent-Range: bytes 0-{}/{LEN}",
+                                LEN - 1
+                            );
+                            respond(&mut stream, &head, &body).await;
+                        }
+                        ("/reprise-sans-plage", Some(_)) => {
+                            respond(&mut stream, &format!("206 Partial Content\r\nContent-Length: {LEN}"), &body).await;
+                        }
+                        ("/complet", Some(_)) => {
+                            let head = format!(
+                                "416 Range Not Satisfiable\r\nContent-Range: bytes */{LEN}\r\nContent-Length: 0"
+                            );
+                            respond(&mut stream, &head, b"").await;
+                        }
+                        ("/sans-fin", _) => {
+                            respond(&mut stream, "200 OK", b"").await;
+                            let chunk = vec![0u8; 1024 * 1024];
+                            while stream.write_all(&chunk).await.is_ok() {}
+                        }
+                        ("/geant", _) => {
+                            respond(&mut stream, "200 OK\r\nContent-Length: 1152921504606846976", b"debut").await;
+                            tokio::time::sleep(Duration::from_secs(30)).await;
+                        }
+                        _ => respond(&mut stream, &format!("200 OK\r\nContent-Length: {LEN}"), &body).await,
+                    }
+                });
+            }
+        });
+        addr
+    }
+
+    struct Case {
+        url: String,
+        dir: PathBuf,
+        /// « .part » déjà présent (reprise) : son contenu.
+        part: Option<Vec<u8>>,
+        check_space: SpaceCheck,
+    }
+
+    async fn run_case(session: &Arc<Session>, case: Case) -> Result<PathBuf, DownloadError> {
+        std::fs::create_dir_all(&case.dir).unwrap();
+        let progress = Arc::new(Progress::default());
+        if let Some(bytes) = &case.part {
+            let part = case.dir.join("film.bin.part");
+            std::fs::write(&part, bytes).unwrap();
+            progress.total.store(LEN as u64, Ordering::Relaxed);
+            let mut file = progress.file.lock();
+            file.name = Some("film.bin".into());
+            file.part_path = Some(part);
+        }
+        let job = Download {
+            url: case.url,
+            dir: case.dir,
+            part_dir: None,
+            progress,
+            session: session.clone(),
+            check_space: case.check_space,
+        };
+        tokio::time::timeout(Duration::from_secs(60), run(&reqwest::Client::new(), job))
+            .await
+            .unwrap_or_else(|_| panic!("téléchargement bloqué"))
+    }
+
+    fn ok(result: Result<PathBuf, DownloadError>) -> PathBuf {
+        match result {
+            Ok(path) => path,
+            Err(DownloadError::NoSpace(msg)) => panic!("place : {msg}"),
+            Err(DownloadError::Failed(err)) => panic!("{err:#}"),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn hostile_web_server_cannot_escape_the_folder_nor_corrupt_files() {
+        let root = std::env::temp_dir().join(format!("pocket-torrent-sandbox-{}", uuid::Uuid::new_v4().simple()));
+        let addr = hostile_server().await;
+        let settings = crate::settings::Settings { download_dir: root.join("telechargements"), ..Default::default() };
+        let network = Network::new(None, true, crate::dns::Resolver::new(crate::dns::Mode::Blocked));
+        let engine =
+            crate::engine::Engine::start(&settings, &root.join("donnees"), crate::engine::Binding::Offline, &network)
+                .await
+                .unwrap();
+        let session = engine.session();
+        let any_space: SpaceCheck = Arc::new(|_: &Path, _: u64| Ok(()));
+
+        // 1. noms piégés annoncés par le serveur : le fichier reste dans le dossier choisi
+        let names = root.join("noms");
+        for (n, header) in HOSTILE_NAMES.iter().enumerate() {
+            let case = Case {
+                url: format!("http://{addr}/nom/{n}"),
+                dir: names.clone(),
+                part: None,
+                check_space: any_space.clone(),
+            };
+            let path = ok(run_case(&session, case).await);
+            assert_eq!(path.parent(), Some(names.as_path()), "{header}");
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            assert!(
+                !name.contains(':') && !name.chars().any(librqbit_core::torrent_metainfo::is_bidi_control),
+                "{name:?}"
+            );
+        }
+        assert_eq!(std::fs::read_dir(&names).unwrap().count(), HOSTILE_NAMES.len());
+        assert!(!root.join("evil.exe").exists() && !std::env::temp_dir().join("evil.exe").exists());
+
+        // 2. reprises : honnête, plage fausse, plage absente, fichier déjà complet
+        let body = body();
+        for (route, part) in [
+            ("reprise", body[..100_000].to_vec()),
+            ("reprise-fausse", body[..100_000].to_vec()),
+            ("reprise-sans-plage", body[..100_000].to_vec()),
+            ("complet", body.clone()),
+        ] {
+            let dir = root.join(route);
+            let case = Case {
+                url: format!("http://{addr}/{route}"),
+                dir: dir.clone(),
+                part: Some(part),
+                check_space: any_space.clone(),
+            };
+            let path = ok(run_case(&session, case).await);
+            assert_eq!(path, dir.join("film.bin"), "{route}");
+            assert!(std::fs::read(&path).unwrap() == body, "{route} : fichier corrompu");
+        }
+
+        // 3. flux sans fin, sans taille annoncée : mis en pause dès que le disque est « plein »
+        let checks = Arc::new(AtomicU32::new(0));
+        let counted = checks.clone();
+        let case = Case {
+            url: format!("http://{addr}/sans-fin"),
+            dir: root.join("sans-fin"),
+            part: None,
+            check_space: Arc::new(move |_: &Path, needed: u64| {
+                counted.fetch_add(1, Ordering::Relaxed);
+                if needed == 0 { Err("disque plein".into()) } else { Ok(()) }
+            }),
+        };
+        assert!(matches!(run_case(&session, case).await, Err(DownloadError::NoSpace(_))), "flux sans fin");
+        assert_eq!(checks.load(Ordering::Relaxed), 1);
+
+        // 4. taille absurde annoncée : refus immédiat, sans débordement de calcul
+        let case = Case {
+            url: format!("http://{addr}/geant"),
+            dir: root.join("geant"),
+            part: None,
+            check_space: Arc::new(
+                |_: &Path, needed: u64| if needed > 1 << 40 { Err("trop gros".into()) } else { Ok(()) },
+            ),
+        };
+        assert!(matches!(run_case(&session, case).await, Err(DownloadError::NoSpace(_))), "taille absurde");
+
+        engine.stop().await;
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Résolveur de test : un nom public qui pointe vers ce PC (« DNS rebinding »).
+    struct Rebinding;
+    impl reqwest::dns::Resolve for Rebinding {
+        fn resolve(&self, _name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            Box::pin(async {
+                let addrs: reqwest::dns::Addrs = Box::new(std::iter::once(SocketAddr::from(([127, 0, 0, 1], 0))));
+                Ok(addrs)
+            })
+        }
+    }
+
+    /// Lien public : client limité à Internet (le site ne peut viser ni la box ni un NAS) ;
+    /// lien écrit avec une adresse locale : l'utilisateur vise ce réseau, client ordinaire.
+    #[tokio::test]
+    async fn public_links_cannot_reach_the_local_network() {
+        for link in ["http://192.168.1.10/film.mkv", "http://nas.local/x", "http://localhost:8080/x", "http://[::1]/x"]
+        {
+            assert!(is_local_link(link), "{link}");
+        }
+        for link in ["https://example.com/x.iso", "http://8.8.8.8/x", "http://box.example.com/x"] {
+            assert!(!is_local_link(link), "{link}");
+        }
+        let addr = hostile_server().await;
+        let rebound = format!("http://site.example:{}/film", addr.port());
+        let plain = reqwest::Client::builder().dns_resolver(Arc::new(Rebinding)).build().unwrap();
+        assert!(plain.get(&rebound).send().await.is_ok(), "le danger existe");
+        let public =
+            librqbit::protect_webseed_client(reqwest::Client::builder(), Arc::new(Rebinding), false).build().unwrap();
+        assert!(public.get(&rebound).send().await.is_err(), "nom public résolu vers ce PC : refusé");
     }
 }

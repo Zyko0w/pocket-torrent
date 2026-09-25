@@ -3,9 +3,6 @@
 //! Voir §10.4 du plan d'upgrade : un torrent peut se faire passer pour une vidéo alors
 //! qu'il contient un exécutable.
 
-/// Caractère d'inversion de texte : peut faire afficher « exe.mkv » comme « mkv.exe ».
-const RTLO: char = '\u{202e}';
-
 /// Extensions de médias courantes, utilisées pour repérer une « fausse vidéo »
 /// (ex. « film.mkv.exe » : le nom se termine par une extension dangereuse cachée
 /// derrière une extension de média qui rassure au premier coup d'œil).
@@ -19,7 +16,8 @@ const MEDIA_EXTENSIONS: &[&str] = &[
 /// signalées, avec le point (ex. « .exe »), voir `Settings::security`.
 pub fn warn_reason(path: &str, excluded: &[String]) -> Option<String> {
     let name = path.rsplit('/').next().unwrap_or(path);
-    if name.contains(RTLO) {
+    // inversion d'affichage (RLO…) : peut faire afficher « 4pm.exe » comme « exe.mp4 »
+    if name.chars().any(librqbit_core::torrent_metainfo::is_bidi_control) {
         return Some("nom de fichier trompeur (caractère d'inversion de texte)".into());
     }
     let lower = name.to_lowercase();

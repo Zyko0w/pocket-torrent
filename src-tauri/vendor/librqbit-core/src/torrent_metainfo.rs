@@ -153,12 +153,24 @@ where
 /// Pocket Torrent : un composant de chemin qui ne peut être qu'un simple nom dans son dossier.
 /// Caractères interdits par Windows remplacés par « _ », noms réservés (CON, NUL…) préfixés,
 /// points et espaces finaux retirés, et jamais « . » ni « .. » ni vide.
+/// Caractère qui change le sens d'affichage du texte (U+200E/F, U+202A–202E, U+2066–2069,
+/// U+061C).
+pub fn is_bidi_control(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{61c}'
+    )
+}
+
 pub fn safe_component(name: &str) -> String {
     let mut cleaned: String = name
         .chars()
         .map(|c| match c {
             '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
             c if (c as u32) < 0x20 => '_',
+            // contrôles d'affichage bidirectionnel : « film\u{202e}4pm.exe » s'afficherait
+            // « filmexe.mp4 » dans l'Explorateur (exécutable déguisé en vidéo)
+            c if is_bidi_control(c) => '_',
             c => c,
         })
         .collect();
@@ -176,8 +188,8 @@ pub fn safe_component(name: &str) -> String {
         stem.as_str(),
         "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
     ) || ((stem.starts_with("COM") || stem.starts_with("LPT"))
-        && stem.len() == 4
-        && matches!(stem.as_bytes()[3], b'0'..=b'9'));
+        && stem.chars().count() == 4
+        && matches!(stem.chars().nth(3), Some('0'..='9' | '¹' | '²' | '³')));
     if reserved {
         cleaned.insert(0, '_');
     }
@@ -589,6 +601,12 @@ mod tests {
         assert_eq!(safe_component("video.mkv"), "video.mkv");
         assert_eq!(safe_component("CON"), "_CON");
         assert_eq!(safe_component("D:Nans"), "D_Nans");
+        // exécutable déguisé par inversion d'affichage, noms réservés en exposant
+        assert_eq!(safe_component("film\u{202e}4pm.exe"), "film_4pm.exe");
+        assert_eq!(safe_component("a\u{2067}b\u{2069}.exe"), "a_b_.exe");
+        assert_eq!(safe_component("COM¹"), "_COM¹");
+        assert_eq!(safe_component("lpt³.txt"), "_lpt³.txt");
+        assert_eq!(safe_component("COM10"), "COM10");
     }
 
     /// §10.3 : un `.torrent` ou des métadonnées reçues d'un pair, même corrompus, ne

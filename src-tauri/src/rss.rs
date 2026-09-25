@@ -195,7 +195,7 @@ pub fn needs_public_only(feed_url: &str, link: &str) -> bool {
 }
 
 /// Adresse de ce PC ou du réseau local (écrite telle quelle dans le lien).
-fn is_local_host(url: &url::Url) -> bool {
+pub(crate) fn is_local_host(url: &url::Url) -> bool {
     use std::net::IpAddr;
     match url.host() {
         Some(url::Host::Domain(name)) => {

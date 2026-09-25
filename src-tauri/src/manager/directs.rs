@@ -47,7 +47,8 @@ impl Manager {
         let manager = self.clone();
         let job_id = id.to_owned();
         let task = tauri::async_runtime::spawn(async move {
-            let http = manager.http();
+            let http =
+                if direct::is_local_link(&download.url) { manager.http() } else { manager.network().public_client() };
             let result = direct::run(&http, download).await;
             manager.on_direct_done(&job_id, result).await;
         });
