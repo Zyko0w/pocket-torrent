@@ -10,6 +10,7 @@ mod manager;
 mod natpmp;
 mod netif;
 mod perf;
+mod relocate;
 mod rss;
 mod secrets;
 mod settings;

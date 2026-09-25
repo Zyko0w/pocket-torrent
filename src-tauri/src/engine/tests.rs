@@ -75,6 +75,73 @@ mod sandbox_tests {
         engine.stop().await;
     }
 
+    /// Torrent à plusieurs fichiers, complet, dans `dir` ; renvoie son empreinte.
+    async fn finished_pack(engine: &Engine, dir: &Path) -> String {
+        let pack = dir.join("Série S01");
+        std::fs::create_dir_all(pack.join("Sous-titres")).unwrap();
+        std::fs::write(pack.join("e01.mkv"), vec![1u8; 300_000]).unwrap();
+        std::fs::write(pack.join("Sous-titres").join("e01.srt"), vec![2u8; 5_000]).unwrap();
+        let (_, handle) = engine.session().create_and_serve_torrent(&pack, Default::default()).await.unwrap();
+        handle.info_hash().as_string()
+    }
+
+    async fn wait_finished(engine: &Engine, hash: &str) -> TorrentView {
+        let started = Instant::now();
+        loop {
+            if let Some(view) =
+                engine.torrents().into_iter().find(|t| t.info_hash == hash && t.state != EngineState::Initializing)
+            {
+                return view;
+            }
+            assert!(started.elapsed() < std::time::Duration::from_secs(20), "torrent jamais revenu");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Dossier « en cours » : le torrent terminé part dans son dossier final (sous-dossier du
+    /// torrent gardé), y est complet, et le dossier « en cours » est vidé.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn finished_torrent_moves_to_its_final_folder() {
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let incomplete = sandbox.root.join("en cours");
+        let finale = sandbox.root.join("Séries");
+        let hash = finished_pack(&engine, &incomplete).await;
+
+        let folder = engine.relocate(&hash, &incomplete, &finale, true).await.unwrap();
+        assert_eq!(folder, finale.join("Série S01"));
+        assert_eq!(std::fs::read(folder.join("e01.mkv")).unwrap().len(), 300_000);
+        assert!(folder.join("Sous-titres").join("e01.srt").exists());
+        assert!(!incomplete.join("Série S01").exists(), "dossier du torrent retiré du dossier « en cours »");
+        assert!(incomplete.exists(), "le dossier « en cours » reste");
+        let view = wait_finished(&engine, &hash).await;
+        assert_eq!(view.output_folder, folder);
+        assert!(view.finished, "toutes les pièces retrouvées au nouvel emplacement");
+        engine.stop().await;
+    }
+
+    /// Fichier du même nom déjà dans le dossier final : rien n'est déplacé ni écrasé, le torrent
+    /// reste complet là où il était.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn move_conflict_leaves_everything_in_place() {
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let incomplete = sandbox.root.join("en cours");
+        let finale = sandbox.root.join("Séries");
+        let hash = finished_pack(&engine, &incomplete).await;
+        std::fs::create_dir_all(finale.join("Série S01")).unwrap();
+        std::fs::write(finale.join("Série S01").join("e01.mkv"), b"fichier de l'utilisateur").unwrap();
+
+        let err = engine.relocate(&hash, &incomplete, &finale, true).await.unwrap_err();
+        assert!(format!("{err:#}").contains("existe déjà"), "{err:#}");
+        assert_eq!(std::fs::read(finale.join("Série S01").join("e01.mkv")).unwrap(), b"fichier de l'utilisateur");
+        assert!(!finale.join("Série S01").join("Sous-titres").exists(), "rien de déplacé");
+        let view = wait_finished(&engine, &hash).await;
+        assert_eq!(view.output_folder, incomplete.join("Série S01"));
+        assert!(view.finished, "toujours complet à l'ancien emplacement");
+        engine.stop().await;
+    }
+
     /// Faux proxy SOCKS5 (127.0.0.1) : note les identifiants et chaque destination demandée,
     /// puis refuse la connexion (rien ne sort vers Internet).
     async fn fake_socks5() -> (u16, Arc<Mutex<Vec<String>>>) {

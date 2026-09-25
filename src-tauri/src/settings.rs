@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     /// Dossier où arrivent les téléchargements sans catégorie.
     pub download_dir: PathBuf,
+    /// Dossier des téléchargements en cours (vide : désactivé). Les fichiers y restent jusqu'à
+    /// la fin, puis sont déplacés vers le dossier de téléchargement ou de la catégorie.
+    pub incomplete_dir: PathBuf,
     pub categories: Vec<Category>,
     pub limits: SpeedLimits,
     pub queue: QueueSettings,
@@ -366,6 +369,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             download_dir: default_download_dir(),
+            incomplete_dir: PathBuf::new(),
             categories: Vec::new(),
             limits: SpeedLimits::default(),
             queue: QueueSettings::default(),
@@ -430,7 +434,15 @@ impl Settings {
 
     /// Tous les dossiers où l'application range des fichiers (garde-fou des suppressions).
     pub fn download_roots(&self) -> Vec<PathBuf> {
-        std::iter::once(self.download_dir.clone()).chain(self.categories.iter().map(|c| c.folder.clone())).collect()
+        std::iter::once(self.download_dir.clone())
+            .chain(self.categories.iter().map(|c| c.folder.clone()))
+            .chain(self.incomplete_dir().map(Path::to_path_buf))
+            .collect()
+    }
+
+    /// Dossier des téléchargements en cours, s'il est choisi.
+    pub fn incomplete_dir(&self) -> Option<&Path> {
+        (!self.incomplete_dir.as_os_str().is_empty()).then_some(self.incomplete_dir.as_path())
     }
 
     /// Nettoie les valeurs saisies puis les vérifie. Renvoie un message en français en cas d'erreur.
@@ -442,6 +454,7 @@ impl Settings {
             Ok(())
         };
         absolute(&self.download_dir, "Dossier de téléchargement")?;
+        self.incomplete_dir = PathBuf::from(self.incomplete_dir.to_string_lossy().trim());
 
         let mut names = HashSet::new();
         let mut ids = HashSet::new();
@@ -544,6 +557,20 @@ impl Settings {
         for feed in &mut self.rss.feeds {
             if feed.category.as_ref().is_some_and(|id| !categories.contains(id)) {
                 feed.category = None;
+            }
+        }
+
+        if let Some(dir) = self.incomplete_dir().map(Path::to_path_buf) {
+            absolute(&dir, "Dossier des téléchargements en cours")?;
+            let same = |other: &Path| {
+                let norm = |p: &Path| p.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase();
+                norm(&dir) == norm(other)
+            };
+            if same(&self.download_dir) || self.categories.iter().any(|c| same(&c.folder)) {
+                return Err(
+                    "Dossier des téléchargements en cours : choisis un autre dossier que celui des téléchargements terminés."
+                        .into(),
+                );
             }
         }
 
@@ -678,5 +705,32 @@ mod proxy_tests {
         assert!(with_proxy("p", 1080, &"u".repeat(256)).is_err());
         // hors mode proxy : champs vides acceptés
         assert!(Settings::default().normalize().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod incomplete_dir_tests {
+    use super::{Category, Settings};
+    use std::path::PathBuf;
+
+    fn with(incomplete: &str) -> Result<Settings, String> {
+        let mut settings = Settings {
+            download_dir: PathBuf::from(r"D:\Téléchargements"),
+            incomplete_dir: PathBuf::from(incomplete),
+            categories: vec![Category { id: "films".into(), name: "Films".into(), folder: PathBuf::from(r"E:\Films") }],
+            ..Default::default()
+        };
+        settings.normalize().map(|()| settings)
+    }
+
+    #[test]
+    fn incomplete_folder_must_differ_from_final_folders() {
+        assert_eq!(with("").unwrap().incomplete_dir(), None, "vide : désactivé");
+        let ok = with(r" C:\En cours ").unwrap();
+        assert_eq!(ok.incomplete_dir(), Some(std::path::Path::new(r"C:\En cours")));
+        assert!(ok.download_roots().contains(&PathBuf::from(r"C:\En cours")), "suppressions permises dedans");
+        for bad in [r"D:\Téléchargements", r"d:\téléchargements\", r"E:\Films", "relatif"] {
+            assert!(with(bad).is_err(), "{bad}");
+        }
     }
 }

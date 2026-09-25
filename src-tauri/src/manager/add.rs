@@ -123,6 +123,8 @@ impl Manager {
             Dest::StorageTo => settings.download_dir.join(UPLOAD_WORK_DIR).join(&id),
             Dest::Local => settings.folder_for(options.category.as_deref()),
         };
+        let part_folder =
+            (options.dest == Dest::Local).then(|| settings.incomplete_dir()).flatten().map(Path::to_path_buf);
         self.data.lock().directs.push(DirectEntry {
             id,
             link: link.to_owned(),
@@ -131,6 +133,7 @@ impl Manager {
             total_bytes: 0,
             received_bytes: 0,
             folder,
+            part_folder,
             part_path: None,
             final_path: None,
             common,
@@ -200,9 +203,14 @@ impl Manager {
             bail!("Ce torrent est déjà dans la liste.");
         }
         let settings = self.settings();
-        let base = match common.dest {
-            Dest::StorageTo => settings.download_dir.join(UPLOAD_WORK_DIR),
-            Dest::Local => settings.folder_for(common.category.as_deref()),
+        let final_base = settings.folder_for(common.category.as_deref());
+        // dossier « en cours » : téléchargé là, déplacé dans `final_base` une fois terminé
+        let incomplete =
+            (common.dest == Dest::Local).then(|| settings.incomplete_dir()).flatten().map(Path::to_path_buf);
+        let base = match (common.dest, &incomplete) {
+            (Dest::StorageTo, _) => settings.download_dir.join(UPLOAD_WORK_DIR),
+            (Dest::Local, Some(dir)) => dir.clone(),
+            (Dest::Local, None) => final_base.clone(),
         };
         let chosen: Option<HashSet<usize>> = only_files.as_ref().map(|list| list.iter().copied().collect());
         let wanted: u64 = preview
@@ -230,6 +238,8 @@ impl Manager {
                 name: preview.name.clone(),
                 wanted_bytes: wanted,
                 source_file: Path::new(link).is_file().then(|| PathBuf::from(link)),
+                final_folder: incomplete.is_some().then(|| final_base.clone()),
+                incomplete_folder: incomplete.clone(),
                 ..Default::default()
             },
         );

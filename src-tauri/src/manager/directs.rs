@@ -39,6 +39,7 @@ impl Manager {
         let download = Download {
             url: entry.link.clone(),
             dir: entry.folder.clone(),
+            part_dir: entry.part_folder.clone(),
             progress,
             session: self.engine.session(),
             check_space,

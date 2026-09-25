@@ -155,15 +155,62 @@ impl Manager {
         };
         tracing::info!("torrent terminé : {name}");
         self.notify(Notify::Done, "Téléchargement terminé", &name);
+        let seed = self.settings.read().seed_when_done;
+        if dest == Dest::Local {
+            self.move_to_final_folder(hash, !seed).await;
+        }
         if let Ok(path) = self.engine.content_path(hash) {
             self.maybe_scan(name.clone(), path);
         }
-        let seed = self.settings.read().seed_when_done;
         if dest == Dest::StorageTo || !seed {
             let _ = self.engine.pause(hash).await;
         }
         if dest == Dest::StorageTo {
             self.start_delivery(JobKey::Torrent(hash.to_owned()));
+        }
+        self.save_now();
+    }
+
+    /// Torrent téléchargé dans le dossier « en cours » : déplacé dans son dossier final. En cas
+    /// d'échec, il reste (en partage ou en pause) dans le dossier « en cours », avec l'erreur ;
+    /// « Reprendre » retente le déplacement.
+    pub(super) async fn move_to_final_folder(self: &Arc<Self>, hash: &str, paused: bool) {
+        let (from, to, name) = {
+            let mut data = self.data.lock();
+            let Some(entry) = data.torrents.get_mut(hash) else { return };
+            let (Some(from), Some(to)) = (entry.incomplete_folder.clone(), entry.final_folder.clone()) else { return };
+            entry.common.warning = Some("Déplacement vers le dossier final…".into());
+            entry.common.error = None;
+            (from, to, entry.name.clone().unwrap_or_else(|| "Le téléchargement".into()))
+        };
+        // absent du moteur pendant le déplacement : la boucle ne doit pas l'oublier
+        self.adding.lock().insert(hash.to_owned());
+        let result = self.engine.relocate(hash, &from, &to, paused).await;
+        self.adding.lock().remove(hash);
+        {
+            let mut data = self.data.lock();
+            if let Some(entry) = data.torrents.get_mut(hash) {
+                entry.common.warning = None;
+                match &result {
+                    Ok(folder) => {
+                        tracing::info!("« {name} » déplacé dans {}", folder.display());
+                        entry.final_folder = None;
+                        entry.incomplete_folder = None;
+                        entry.folder = Some(folder.clone());
+                    }
+                    Err(err) => {
+                        entry.common.error = Some(format!(
+                            "Déplacement vers {} impossible : {err:#}. Les fichiers sont restés dans {}.",
+                            to.display(),
+                            from.display()
+                        ));
+                    }
+                }
+            }
+        }
+        if let Err(err) = result {
+            tracing::warn!("déplacement de « {name} » impossible : {err:#}");
+            self.notify(Notify::Error, "Déplacement impossible", &format!("{name} : {err:#}"));
         }
         self.save_now();
     }

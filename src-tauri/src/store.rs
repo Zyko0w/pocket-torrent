@@ -177,6 +177,12 @@ pub struct TorrentEntry {
     /// proposé à la suppression avec le téléchargement.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_file: Option<PathBuf>,
+    /// Téléchargé dans le dossier « en cours » (`incomplete_folder`) : dossier où le déplacer une
+    /// fois terminé. Retiré après le déplacement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_folder: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incomplete_folder: Option<PathBuf>,
 }
 
 /// Magnet en attente de ses métadonnées.
@@ -201,6 +207,10 @@ pub struct DirectEntry {
     pub total_bytes: u64,
     pub received_bytes: u64,
     pub folder: PathBuf,
+    /// Dossier du fichier « .part » s'il diffère de `folder` (dossier « en cours ») : le
+    /// fichier terminé est ensuite déplacé dans `folder`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_folder: Option<PathBuf>,
     pub part_path: Option<PathBuf>,
     pub final_path: Option<PathBuf>,
     #[serde(flatten)]

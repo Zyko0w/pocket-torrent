@@ -206,6 +206,9 @@ pub type SpaceCheck = Arc<dyn Fn(&Path, u64) -> Result<(), String> + Send + Sync
 pub struct Download {
     pub url: String,
     pub dir: PathBuf,
+    /// Dossier du « .part » s'il diffère de `dir` (dossier « en cours ») : le fichier terminé
+    /// est déplacé dans `dir`.
+    pub part_dir: Option<PathBuf>,
     pub progress: Arc<Progress>,
     pub session: Arc<Session>,
     pub check_space: SpaceCheck,
@@ -275,8 +278,9 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
         Some(part) => part,
         None => {
             let name = progress.file.lock().name.clone().unwrap_or_else(|| safe_file_name(&file_name_from(&response)));
-            std::fs::create_dir_all(&job.dir).map_err(|e| Attempt::Fatal(DownloadError::Failed(e.into())))?;
-            let target = unique_path(&job.dir, &name);
+            let part_dir = job.part_dir.as_ref().unwrap_or(&job.dir);
+            std::fs::create_dir_all(part_dir).map_err(|e| Attempt::Fatal(DownloadError::Failed(e.into())))?;
+            let target = unique_path(part_dir, &name);
             let part = part_path(&target);
             let mut file = progress.file.lock();
             file.name = target.file_name().map(|n| n.to_string_lossy().into_owned());
@@ -289,7 +293,8 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
 
     let total = progress.total.load(Ordering::Relaxed);
     if total > received {
-        (job.check_space)(&job.dir, total - received).map_err(|msg| Attempt::Fatal(DownloadError::NoSpace(msg)))?;
+        (job.check_space)(job.part_dir.as_ref().unwrap_or(&job.dir), total - received)
+            .map_err(|msg| Attempt::Fatal(DownloadError::NoSpace(msg)))?;
     }
 
     let mut options = tokio::fs::OpenOptions::new();
@@ -341,12 +346,15 @@ async fn fetch(client: &reqwest::Client, job: &Download, url: &str) -> Result<Pa
     // « film.mkv.part » → « film.mkv »
     let part_name = part.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let final_name = part_name.strip_suffix(".part").unwrap_or(&part_name).to_owned();
-    let mut final_path = part.with_file_name(&final_name);
+    // à côté du « .part », ou dans le dossier final s'il était dans le dossier « en cours »
+    let final_dir =
+        if job.part_dir.is_some() { job.dir.clone() } else { part.parent().unwrap_or(&job.dir).to_path_buf() };
+    let mut final_path = final_dir.join(&final_name);
     if final_path.exists() {
-        final_path = unique_path(part.parent().unwrap_or(&job.dir), &final_name);
+        final_path = unique_path(&final_dir, &final_name);
     }
-    std::fs::rename(&part, &final_path)
-        .with_context(|| format!("impossible de renommer {}", part.display()))
+    crate::relocate::move_file(&part, &final_path)
+        .with_context(|| format!("impossible de ranger {} dans {}", part.display(), final_dir.display()))
         .map_err(|e| Attempt::Fatal(DownloadError::Failed(e)))?;
     {
         let mut state = progress.file.lock();
@@ -407,5 +415,47 @@ mod safe_name_tests {
             assert_eq!(safe_file_name(name), expected, "{name:?}");
         }
         assert!(safe_file_name(&"a".repeat(500)).chars().count() <= 180);
+    }
+}
+
+#[cfg(test)]
+mod incomplete_dir_tests {
+    use super::*;
+
+    /// Lien direct avec dossier « en cours » : le « .part » s'y écrit, le fichier terminé part
+    /// dans le dossier final. Faux serveur web sur 127.0.0.1, dossiers temporaires dédiés.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn direct_download_lands_in_the_final_folder() {
+        let root = std::env::temp_dir().join(format!("pocket-torrent-sandbox-{}", uuid::Uuid::new_v4().simple()));
+        let (incomplete, finale) = (root.join("en cours"), root.join("Films"));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().route("/film.mkv", axum::routing::get(|| async { vec![9u8; 200_000] }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let settings = crate::settings::Settings { download_dir: root.join("telechargements"), ..Default::default() };
+        let network = Network::new(None, true, crate::dns::Resolver::new(crate::dns::Mode::Blocked));
+        let engine =
+            crate::engine::Engine::start(&settings, &root.join("donnees"), crate::engine::Binding::Offline, &network)
+                .await
+                .unwrap();
+        let job = Download {
+            url: format!("http://{addr}/film.mkv"),
+            dir: finale.clone(),
+            part_dir: Some(incomplete.clone()),
+            progress: Arc::new(Progress::default()),
+            session: engine.session(),
+            check_space: Arc::new(|_: &Path, _: u64| Ok(())),
+        };
+        let path = match run(&reqwest::Client::new(), job).await {
+            Ok(path) => path,
+            Err(DownloadError::NoSpace(msg)) => panic!("{msg}"),
+            Err(DownloadError::Failed(err)) => panic!("{err:#}"),
+        };
+        assert_eq!(path, finale.join("film.mkv"));
+        assert_eq!(std::fs::read(&path).unwrap().len(), 200_000);
+        assert_eq!(std::fs::read_dir(&incomplete).unwrap().count(), 0, "aucun « .part » laissé");
+        engine.stop().await;
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

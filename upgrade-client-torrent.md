@@ -31,7 +31,7 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§5** Planificateur de limites (plages horaires) | ✅ | Heures + jours de la semaine, se combine avec le mode jeu |
 | **§5** Revérification forcée | ✅ | Retiré du moteur puis rajouté depuis les octets déjà en mémoire, sans retélécharger les métadonnées |
 | **§5** Carte des pièces | ✅ | Correctif moteur d'un mot-clé (accesseur interne déjà existant, juste pas exposé) |
-| **§5** Déplacement automatique à la fin / dossier temporaire | ❌ *refusé* | Pas d'API moteur pour déplacer un torrent suivi en direct ; la seule voie (retirer + déplacer + revérifier) touche aux fichiers déjà téléchargés — trop de risque pour la valeur |
+| **§5** Déplacement automatique à la fin / dossier temporaire | ✅ *(25/09)* | Dossier « en cours » facultatif : torrents et liens directs y sont téléchargés puis déplacés dans leur dossier final (celui de la catégorie). Torrent retiré du moteur le temps du déplacement (fichiers fermés), puis rajouté et revérifié (rapide). Tout ou rien, jamais d'écrasement, copie puis suppression d'un disque à l'autre ; en cas d'échec, les fichiers restent en place et « Reprendre » retente. Tests en bac à sable |
 | **§5** Détails : vue trackers | ✅ | État de chaque tracker (connexion, succès, échec et raison, pairs reçus, prochaine annonce) ; **25/09** : sources et clients (seeders/leechers) rapportés par chaque tracker HTTP et UDP |
 | **§5** Journal consultable et exportable | ✅ | Fichier tournant (7 jours), 300 dernières lignes affichables, export |
 | **§5 / §6.1** Création de torrent avancée | ❌ *retirée (0.2.1)* | Faite (taille de pièce, trackers, option privée) puis retirée avec « Partager en torrent » : une commande de moins exposée |
@@ -228,7 +228,7 @@ Détail des correctifs appliqués au moteur vendorisé : voir `src-tauri/vendor/
 | Objectifs de ratio et de temps de partage, avec action à la clé | P0 | ✅ | Pause ou arrêt du partage, déjà en place. |
 | Catégories, étiquettes, chemin de sauvegarde par catégorie | P1 | ✅ | Déjà en place. |
 | Dossiers surveillés | P1 | ❌ | Faits puis retirés en 0.2.0 (voir §0). |
-| Déplacement automatique à la fin, dossier temporaire | P1 | ❌ | Refusé après étude : pas d'API moteur pour déplacer un torrent suivi en direct, la seule voie (retirer + déplacer + revérifier) touche aux fichiers déjà téléchargés. |
+| Déplacement automatique à la fin, dossier temporaire | P1 | ✅ | Fait le 25/09 (voir §0). |
 | Programme externe à l'ajout ou à la fin | P1 | ❌ | Fait puis retiré en 0.2.0 (voir §0). |
 | Création de torrents (v1, v2, hybride) | P1 | ❌ | v1 faite puis retirée en 0.2.1 (voir §0). |
 | Revérification forcée | P0 | ✅ | Retiré du moteur puis rajouté depuis les octets déjà en mémoire, sans retélécharger les métadonnées. |

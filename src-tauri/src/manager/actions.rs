@@ -60,6 +60,20 @@ impl Manager {
                     .into_iter()
                     .find(|v| &v.info_hash == hash)
                     .context("Torrent introuvable.")?;
+                let move_pending = self
+                    .data
+                    .lock()
+                    .torrents
+                    .get(hash)
+                    .is_some_and(|e| e.final_folder.is_some() && e.common.finished_at.is_some());
+                if view.finished && move_pending {
+                    // déplacement vers le dossier final raté : nouvel essai
+                    let paused = !self.settings.read().seed_when_done;
+                    let manager = self.clone();
+                    let hash = hash.clone();
+                    tauri::async_runtime::spawn(async move { manager.move_to_final_folder(&hash, paused).await });
+                    return Ok(());
+                }
                 if view.finished || view.state == EngineState::Error {
                     // partager un torrent terminé, ou relancer un torrent en erreur
                     self.engine.resume(hash).await?;

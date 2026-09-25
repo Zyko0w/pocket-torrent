@@ -269,6 +269,66 @@ impl Engine {
         Ok(())
     }
 
+    /// Déplace un torrent terminé de `from_base` vers `to_base` : retiré du moteur (fichiers
+    /// fermés, sinon Windows refuse de les déplacer), fichiers déplacés (tout ou rien, voir
+    /// `relocate`), puis rajouté à son nouvel emplacement, où sa vérification retrouve toutes
+    /// les pièces. En cas d'échec, il est rajouté là où sont restés ses fichiers. Renvoie son
+    /// nouveau dossier.
+    pub async fn relocate(
+        &self,
+        hash: &str,
+        from_base: &Path,
+        to_base: &Path,
+        paused: bool,
+    ) -> anyhow::Result<PathBuf> {
+        let torrent = self.handle(hash)?;
+        let bytes = torrent.with_metadata(|meta| meta.torrent_bytes.clone())?;
+        let rels: Vec<PathBuf> = torrent.with_metadata(|meta| {
+            meta.file_infos.iter().filter(|f| !f.attrs.padding).map(|f| f.relative_filename.clone()).collect()
+        })?;
+        let only_files = torrent.only_files();
+        let old = torrent.output_folder().to_path_buf();
+        // dossier propre au torrent (plusieurs fichiers) gardé tel quel à l'arrivée
+        let new = match old.strip_prefix(from_base) {
+            Ok(rest) => to_base.join(rest),
+            Err(_) => {
+                old.file_name().filter(|_| old != from_base).map_or_else(|| to_base.to_path_buf(), |n| to_base.join(n))
+            }
+        };
+        drop(torrent);
+        let id = TorrentIdOrHash::parse(hash).map_err(|_| anyhow!("Torrent inconnu."))?;
+        self.session().delete(id, false).await?;
+
+        let moved = {
+            let (old, new, rels, keep) = (old.clone(), new.clone(), rels.clone(), from_base.to_path_buf());
+            tokio::task::spawn_blocking(move || {
+                let result = crate::relocate::move_tree(&old, &new, &rels);
+                if result.is_ok() {
+                    crate::relocate::remove_empty_dirs(&old, &rels, &keep);
+                }
+                result
+            })
+            .await
+            .map_err(|err| anyhow!("déplacement interrompu : {err}"))
+            .and_then(|r| r)
+        };
+        let folder = if moved.is_ok() { &new } else { &old };
+        self.session()
+            .add_torrent(
+                AddTorrent::from_bytes(bytes),
+                Some(AddTorrentOptions {
+                    paused,
+                    only_files,
+                    output_folder: Some(folder.to_string_lossy().into_owned()),
+                    overwrite: true,
+                    ..Default::default()
+                }),
+            )
+            .await
+            .context("impossible de reprendre le torrent après le déplacement")?;
+        moved.map(|()| new)
+    }
+
     pub async fn set_files(&self, hash: &str, files: Vec<usize>) -> anyhow::Result<()> {
         let files: HashSet<usize> = files.into_iter().collect();
         if files.is_empty() {

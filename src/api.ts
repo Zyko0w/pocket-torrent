@@ -171,6 +171,8 @@ export interface Category { id: string; name: string; folder: string }
 
 export interface Settings {
   downloadDir: string
+  /** Dossier des téléchargements en cours ('' : désactivé). */
+  incompleteDir: string
   categories: Category[]
   limits: { downKbps: number; upKbps: number }
   queue: { maxActive: number; ignoreSlow: boolean; slowThresholdKbps: number }

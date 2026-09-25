@@ -20,6 +20,19 @@ export function FoldersSection ({ settings, update }: SectionProps) {
         <p className='help'>Les téléchargements déjà commencés restent dans leur dossier.</p>
       </div>
       <div className='field'>
+        <label htmlFor='incomplete-dir'>Dossier des téléchargements en cours <span className='optional'>(facultatif)</span></label>
+        <div className='input-row'>
+          <input id='incomplete-dir' className='input' placeholder='Aucun : tout arrive directement dans le dossier final' value={settings.incompleteDir} onChange={(e) => update({ incompleteDir: e.target.value })} />
+          <button type='button' className='btn btn-ghost' onClick={async () => { const f = await pickFolder(settings.incompleteDir || settings.downloadDir); if (f) update({ incompleteDir: f }) }}>
+            <FolderOpen size={16} /> Parcourir
+          </button>
+        </div>
+        <p className='help'>
+          Les fichiers y restent pendant le téléchargement, puis sont déplacés dans le dossier ci-dessus (ou celui de la catégorie) une fois
+          terminés. Pratique si Plex ou Jellyfin surveille ton dossier final, ou pour télécharger sur un SSD et ranger sur un autre disque.
+        </p>
+      </div>
+      <div className='field'>
         <span className='label'>Catégories</span>
         {settings.categories.length === 0 && <p className='help' style={{ marginTop: 0 }}>Aucune catégorie : tout va dans le dossier ci-dessus.</p>}
         <ul className='category-list'>

@@ -18,6 +18,7 @@
     ],
     "upKbps": 50
   },
+  "incompleteDir": "",
   "limits": {
     "downKbps": 0,
     "upKbps": 0
