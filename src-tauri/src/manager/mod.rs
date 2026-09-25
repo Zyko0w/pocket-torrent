@@ -12,7 +12,6 @@ use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri::async_runtime::JoinHandle;
-use tauri_plugin_notification::NotificationExt;
 
 use crate::danger;
 use crate::direct::{self, Download, DownloadError, Progress};
@@ -524,9 +523,12 @@ impl Manager {
     }
 
     fn show_notification(&self, title: &str, body: &str) {
-        if let Err(err) = self.app.notification().builder().title(title).body(body).show() {
-            tracing::warn!("notification impossible : {err}");
-        }
+        let (id, title, body) = (self.app.config().identifier.clone(), title.to_owned(), body.to_owned());
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(err) = crate::toast::show(&id, &title, &body) {
+                tracing::warn!("notification non affichée : {err:#}");
+            }
+        });
     }
 
     pub async fn shutdown(&self) {

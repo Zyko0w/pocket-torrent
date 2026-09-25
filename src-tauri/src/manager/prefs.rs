@@ -88,8 +88,13 @@ impl Manager {
         Ok(self.settings_view())
     }
 
-    pub fn test_notification(&self) {
-        self.show_notification("Pocket Torrent", "Les notifications fonctionnent.");
+    /// Bouton « Tester » : erreur lisible si Windows n'affichera pas la notification.
+    pub async fn test_notification(&self) -> anyhow::Result<()> {
+        let id = self.app.config().identifier.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::toast::show(&id, "Pocket Torrent", "Les notifications fonctionnent.")
+        })
+        .await?
     }
 
     /// Bouton « Tester » : storage.to joignable, et quota restant.

@@ -298,8 +298,7 @@ pub async fn answer_link_handler(state: State<'_, AppState>, enable: bool) -> Co
 
 #[tauri::command]
 pub async fn test_notification(state: State<'_, AppState>) -> CommandResult<()> {
-    state.manager.test_notification();
-    Ok(())
+    state.manager.test_notification().await.map_err(message)
 }
 
 #[tauri::command]

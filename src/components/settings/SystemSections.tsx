@@ -17,7 +17,11 @@ export function NotificationsSection (props: SectionProps) {
       <Check checked={notifications.done} onChange={(done) => update({ notifications: { ...notifications, done } })} label='Quand un téléchargement est terminé' />
       <Check checked={notifications.error} onChange={(error) => update({ notifications: { ...notifications, error } })} label='Quand un problème survient' />
       <div>
-        <button type='button' className='btn btn-ghost btn-sm' onClick={() => api.testNotification().catch((err) => toast(errorMessage(err)))}>
+        <button type='button' className='btn btn-ghost btn-sm' onClick={() => {
+            api.testNotification()
+              .then(() => toast('Notification envoyée : elle doit apparaître en bas à droite de l’écran.'))
+              .catch((err) => toast(`Notification impossible : ${errorMessage(err)}`))
+          }}>
           <BellRinging size={16} /> Envoyer une notification de test
         </button>
       </div>

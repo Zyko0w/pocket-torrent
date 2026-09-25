@@ -15,7 +15,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 
@@ -63,6 +62,9 @@ webview2-com = "0.38"
 windows-core = "0.61"
 pocket-torrent-tunnel = { path = "tunnel" }
 winreg = "0.56"
+# notifications (voir toast.rs) : mêmes versions que le module de notification de Tauri
+tauri-winrt-notification = "0.7"
+windows = { version = "0.61", features = ["UI_Notifications"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Networking_WinSock",

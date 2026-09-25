@@ -17,6 +17,7 @@ mod settings;
 mod storage_to;
 mod store;
 mod system;
+mod toast;
 mod tray;
 #[cfg(windows)]
 mod tunnel;
@@ -46,7 +47,6 @@ pub fn run() {
                 tray::show_main_window(app);
             }
         }))
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         // mises à jour signées (minisign), publiées sur GitHub Releases : proposées, jamais imposées
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -59,6 +59,10 @@ pub fn run() {
             // ancien nom ou ancien dossier d'installation : démarrage avec Windows et liens magnet suivent
             if let Err(err) = system::refresh_registration() {
                 tracing::warn!("mise à jour des associations Windows impossible : {err:#}");
+            }
+            // sans cette déclaration, Windows ignore les notifications sans rien dire
+            if let Err(err) = toast::register(&app.config().identifier, &data_dir) {
+                tracing::warn!("notifications : déclaration à Windows impossible : {err:#}");
             }
             perf::mark_start();
             let manager =
