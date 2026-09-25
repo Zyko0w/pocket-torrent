@@ -50,3 +50,34 @@ Tous ces tests tournent aussi dans la CI.
 - `engine.rs` (1 330 lignes) découpé en module : session, vues, ajout, tests.
 - Boucle d'une seconde et rafraîchissements de l'interface relus : rien de coûteux sans raison (la priorité des fichiers n'est réappliquée que si elle a changé, le volet Fichiers se rafraîchit moins souvent au-delà de 2 000 fichiers, et tout se met en pause fenêtre cachée).
 - Paquet de l'interface : 510 Ko (143 Ko compressés), chargé depuis le disque ; pas de gain notable à le découper.
+
+## Deuxième passe : test d'intrusion complet (soir du 25/09)
+
+Toutes les attaques sont regroupées et rejouables d'une commande : `pwsh pentest/run.ps1`
+(index des attaques : `pentest/README.md`). Chaque faille corrigée a son contre-test : correctif
+retiré, l'attaque réussit.
+
+| Gravité | Problème trouvé | Correctif |
+| --- | --- | --- |
+| **Élevée** | Un seul datagramme UDP de plus de 16 Kio, envoyé par n'importe qui, **arrêtait toute la DHT** (et, séparément, tout le µTP) jusqu'au redémarrage. | Tampon de 64 Kio, erreur de lecture non fatale. |
+| **Élevée** | settings.json abîmé (coupure de courant, valeur d'une autre version) : tous les réglages revenaient par défaut, **VPN obligatoire compris** — les torrents repartaient sans protection. | Copie gardée, chaque réglage valide repris ; idem pour jobs.json (seuls les téléchargements illisibles sont perdus). |
+| Moyenne | Boucle d'acceptation des connexions entrantes : panique possible (plus aucun pair entrant) ; une seule adresse IP occupait toutes les places de vérification. | Plus de panique ; 16 connexions en attente au plus par adresse. |
+| Moyenne | PEX : un pair remplissait en une seconde toute la liste des pairs connus de fausses adresses (client isolé des vrais pairs). | Un message PEX par minute et par pair, 250 adresses par connexion. |
+| Moyenne | DHT : amorçage raté au démarrage (réseau pas prêt) = nœud arrêté sans message. | Nouvel essai chaque minute. |
+| Moyenne | Lien direct : reprise acceptée même quand le serveur renvoyait une autre plage (fichier corrompu) ; flux sans taille annoncée pouvant remplir le disque ; site public pouvant rediriger vers la box. | Plage vérifiée ; place revérifiée tous les 64 Mio ; client limité à Internet pour les liens publics. |
+| Moyenne | Nom « film\u{202e}4pm.exe » : l'Explorateur l'affiche « filmexe.mp4 » (exécutable déguisé) ; seul U+202E était signalé, le nom restait tel quel sur le disque. | Tous les caractères d'inversion d'affichage remplacés et signalés ; COM¹–³ / LPT¹–³ réservés. |
+| Faible | Planificateur : une plage de nuit (23 h → 7 h) s'arrêtait à minuit si le lendemain n'était pas coché. | La plage compte pour le jour où elle commence ; début = fin couvre la journée. |
+| Faible | Journal : un nom de torrent avec retours à la ligne ou séquences d'échappement inventait de fausses lignes. | Un évènement = une ligne, caractères de contrôle neutralisés ; lecture limitée aux 4 derniers Mio. |
+| Faible | Perçage de NAT : aucune limite de fréquence par pair. | Un message par seconde et par pair. |
+| Défense en profondeur | Exports (liste, journal, mesures) vers n'importe quel type de fichier : un script injecté (improbable, CSP stricte) aurait pu déposer un `.bat` dans Démarrage. | .json/.log/.txt seulement. Import .conf : taille vérifiée avant lecture. |
+
+**Vérifié, résiste** (voir `pentest/README.md`) : pairs hostiles en masse, fuzzing des messages
+entre pairs, de la DHT, des .torrent et des .conf, faux trackers, fausse box UPnP, flux RSS
+piégés, listes piégées, faux service du tunnel, arrêt d'urgence du VPN (carte absente, éteinte,
+sans adresse), interface (ni HTML brut, ni `eval`, ni lien construit à partir de données).
+
+**Fonctionnalités désormais testées** : file d'attente (ordre, limite, « démarrer maintenant »,
+téléchargements lents, disque plein), limites (normales, planifiées, mode jeu), choix de la
+liaison réseau, validation de tous les réglages, actions d'un torrent (priorité des fichiers,
+choix, pause/reprise, lien magnet), reprise des liens directs, journal. Aucune fonctionnalité ni
+option retirée.

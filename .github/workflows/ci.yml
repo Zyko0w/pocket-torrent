@@ -103,6 +103,12 @@ jobs:
           --config 'patch.crates-io.librqbit-core.path="../librqbit-core"'
           --config 'patch.crates-io.librqbit-bencode.path="../librqbit-bencode"'
 
+      - name: Rust — tests du format .torrent (noms de fichiers piégés, fuzzing)
+        working-directory: src-tauri/vendor/librqbit-core
+        run: >-
+          cargo test --lib --target-dir ../../target/core-tests
+          --config 'patch.crates-io.librqbit-bencode.path="../librqbit-bencode"'
+
       - name: Rust — tests DHT (BEP 42, fuzzing des messages)
         working-directory: src-tauri/vendor/librqbit-dht
         run: >-
