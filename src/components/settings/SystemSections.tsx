@@ -139,7 +139,7 @@ export function NetworkSection (props: SectionProps & { listenPort: number | nul
         checked={settings.utpEnabled}
         onChange={(utpEnabled) => update({ utpEnabled })}
         label='Activer µTP (BEP 29), en plus du TCP'
-        help='Joint des pairs difficiles à atteindre en TCP (NAT strict). Désactivé par défaut : ce module est encore jeune dans le moteur utilisé ici.'
+        help='Joint des pairs difficiles à atteindre en TCP (NAT strict), et permet le perçage de NAT (BEP 55) : deux pairs injoignables, par exemple derrière un VPN sans redirection de port, se connectent via un pair commun. Désactivé par défaut : ce module est encore jeune dans le moteur utilisé ici.'
       />
       <div className='field'>
         <label htmlFor='max-peers'>Pairs connectés par torrent <span className='optional'>(0 = illimité)</span></label>
