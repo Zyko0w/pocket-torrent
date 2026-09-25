@@ -4,6 +4,7 @@ mod e2e_choking;
 mod e2e_endgame;
 mod e2e_holepunch;
 mod e2e_interest;
+mod pentest_hostile_peer;
 mod e2e_interop;
 mod e2e_stream;
 mod e2e_webseed;

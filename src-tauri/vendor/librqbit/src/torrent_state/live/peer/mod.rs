@@ -318,6 +318,10 @@ pub(crate) struct LivePeerState {
     pub holepunch: bool,
     /// Dernier message de perçage reçu de ce pair (au plus un par seconde : au-delà, ignoré).
     pub holepunch_last: Option<std::time::Instant>,
+    /// Pocket Torrent : dernier message PEX accepté de ce pair, et adresses qu'il nous a
+    /// déjà données (voir `on_pex_message`).
+    pub pex_last: Option<std::time::Instant>,
+    pub pex_added: u32,
 }
 
 impl LivePeerState {
@@ -342,6 +346,8 @@ impl LivePeerState {
             listen_port: None,
             holepunch: false,
             holepunch_last: None,
+            pex_last: None,
+            pex_added: 0,
         }
     }
 

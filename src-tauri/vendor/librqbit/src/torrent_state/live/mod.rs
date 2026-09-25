@@ -185,6 +185,11 @@ pub enum AddIncomingPeerResult {
 /// BEP 11 : drapeau PEX « gère le perçage de NAT (BEP 55) ».
 const PEX_FLAG_HOLEPUNCH: u8 = 0x08;
 
+/// Pocket Torrent : un message PEX par minute et par pair au plus (BEP 11 ; marge de 10 s).
+const PEX_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(50);
+/// Pocket Torrent : adresses acceptées au plus d'un même pair par PEX, sur toute la connexion.
+const MAX_PEX_PER_CONNECTION: u32 = 250;
+
 /// Pocket Torrent : pairs pris au plus dans un message PEX.
 const MAX_PEX_ADDED_PEERS: usize = 50;
 
@@ -2473,34 +2478,57 @@ impl PeerHandler {
         // Pocket Torrent : seulement les pairs ajoutés (les « partis » étaient ajoutés aussi), et
         // 50 au plus par message comme le prévoit le PEX : un message énorme ne sert qu'à inonder
         // la liste (bornée en plus par `peers::MAX_KNOWN_PEERS`).
+        // un message par minute au plus (BEP 11), et `MAX_PEX_PER_CONNECTION` adresses au total
+        // par connexion : sans ça, un seul pair remplissait en une seconde toute la liste des
+        // pairs connus de fausses adresses, et les vrais pairs trouvés ensuite étaient refusés
+        let allowed = self
+            .state
+            .peers
+            .with_live_mut(self.addr, "pex_rate", |live| {
+                let now = std::time::Instant::now();
+                if live
+                    .pex_last
+                    .is_some_and(|at| now.duration_since(at) < PEX_MIN_INTERVAL)
+                {
+                    return 0;
+                }
+                live.pex_last = Some(now);
+                let room = MAX_PEX_PER_CONNECTION.saturating_sub(live.pex_added);
+                let take = room.min(MAX_PEX_ADDED_PEERS as u32);
+                live.pex_added += take;
+                take as usize
+            })
+            .unwrap_or(0);
+        if allowed == 0 {
+            trace!("PEX message ignored (too frequent, or too many addresses from this peer)");
+            return;
+        }
         let source = self.addr;
-        msg.added_peers()
-            .take(MAX_PEX_ADDED_PEERS)
-            .for_each(|peer| {
-                self.state
-                    .add_peer_if_not_seen(peer.addr)
-                    .map_err(|error| {
-                        warn!(
-                            id = self.state.shared.id,
-                            info_hash = ?self.state.shared.info_hash,
-                            ?peer,
-                            "failed to add peer: {error:#}"
-                        );
-                        error
-                    })
-                    .ok();
-                // Pocket Torrent (BEP 55) : qui l'a présenté, et s'il gère le perçage de NAT
-                // (après l'ajout : le pair doit être dans la table)
-                let holepunch = peer.flags & PEX_FLAG_HOLEPUNCH != 0;
-                self.state
-                    .peers
-                    .with_peer_mut(peer.addr, "pex_source", |p| {
-                        if p.pex_source.is_none() || holepunch {
-                            p.pex_source = Some(source);
-                            p.pex_holepunch = holepunch;
-                        }
-                    });
-            });
+        msg.added_peers().take(allowed).for_each(|peer| {
+            self.state
+                .add_peer_if_not_seen(peer.addr)
+                .map_err(|error| {
+                    warn!(
+                        id = self.state.shared.id,
+                        info_hash = ?self.state.shared.info_hash,
+                        ?peer,
+                        "failed to add peer: {error:#}"
+                    );
+                    error
+                })
+                .ok();
+            // Pocket Torrent (BEP 55) : qui l'a présenté, et s'il gère le perçage de NAT
+            // (après l'ajout : le pair doit être dans la table)
+            let holepunch = peer.flags & PEX_FLAG_HOLEPUNCH != 0;
+            self.state
+                .peers
+                .with_peer_mut(peer.addr, "pex_source", |p| {
+                    if p.pex_source.is_none() || holepunch {
+                        p.pex_source = Some(source);
+                        p.pex_holepunch = holepunch;
+                    }
+                });
+        });
     }
 
     fn is_choked(&self) -> bool {
