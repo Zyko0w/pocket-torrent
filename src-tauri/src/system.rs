@@ -89,13 +89,24 @@ pub fn cancel_shutdown() -> anyhow::Result<()> {
 /// Ouvre un dossier, ou l'Explorateur avec le fichier sélectionné.
 pub fn reveal(path: &Path) -> anyhow::Result<()> {
     let mut command = std::process::Command::new("explorer.exe");
-    if path.is_file() {
-        command.arg(format!("/select,{}", path.display()));
-    } else {
-        command.arg(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.raw_arg(explorer_argument(path, path.is_file()));
     }
+    #[cfg(not(windows))]
+    command.arg(path);
     command.spawn().context("impossible d'ouvrir l'Explorateur")?;
     Ok(())
+}
+
+/// Argument d'explorer.exe, chemin toujours entre guillemets (un nom de fichier Windows ne peut
+/// pas en contenir) : Explorer découpe sa ligne de commande aux virgules, et un nom venu d'un
+/// torrent (« a,b.exe ») ne doit pas pouvoir être lu comme autre chose qu'un chemin.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn explorer_argument(path: &Path, select: bool) -> String {
+    let quoted = format!("\"{}\"", path.display().to_string().replace('"', ""));
+    if select { format!("/select,{quoted}") } else { quoted }
 }
 
 /// Un seul accès au presse-papiers à la fois dans tout le programme. Les commandes `async` de
@@ -639,5 +650,21 @@ mod clipboard_stress {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod explorer_tests {
+    use std::path::Path;
+
+    #[test]
+    fn explorer_always_gets_one_quoted_path() {
+        assert_eq!(
+            super::explorer_argument(Path::new(r"C:\Téléchargements\a,b ,c.exe"), true),
+            r#"/select,"C:\Téléchargements\a,b ,c.exe""#
+        );
+        assert_eq!(super::explorer_argument(Path::new(r"C:\dl\x"), false), r#""C:\dl\x""#);
+        // jamais de guillemet qui fermerait l'argument (impossible dans un vrai nom Windows)
+        assert_eq!(super::explorer_argument(Path::new("a\" /x"), false), r#""a /x""#);
     }
 }
