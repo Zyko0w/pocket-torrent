@@ -189,6 +189,9 @@ fn magnet_peers(link: &str) -> Option<Vec<SocketAddr>> {
 /// Magnet, lien http(s) vers un .torrent, ou chemin d'un fichier .torrent local.
 fn add_source(link: &str) -> anyhow::Result<AddTorrent<'static>> {
     let link = link.trim();
+    if link.starts_with("magnet:") {
+        check_magnet(link)?;
+    }
     if link.starts_with("magnet:") || link.starts_with("http://") || link.starts_with("https://") {
         return Ok(AddTorrent::from_url(link.to_owned()));
     }
@@ -203,6 +206,19 @@ fn add_source(link: &str) -> anyhow::Result<AddTorrent<'static>> {
         bail!("Fichier .torrent introuvable (déplacé ou supprimé ?) : {link}");
     }
     bail!("Lien non reconnu : colle un magnet, un lien http(s) ou choisis un fichier .torrent.")
+}
+
+/// Magnet lisible par le moteur : empreinte v1 (`urn:btih:`, hexadécimale ou base 32). Un magnet
+/// hybride (v1 + v2 `urn:btmh:`) passe par son empreinte v1 ; un magnet v2 seul est refusé avec un
+/// message clair, le moteur ne gérant pas encore BitTorrent v2.
+fn check_magnet(link: &str) -> anyhow::Result<()> {
+    let magnet = librqbit::Magnet::parse(link).map_err(|_| anyhow!("Lien magnet invalide ou incomplet."))?;
+    if magnet.as_id20().is_none() {
+        bail!(
+            "Ce magnet est au format BitTorrent v2 seul (urn:btmh), pas encore pris en charge.              Cherche la version hybride (v1 + v2) ou le fichier .torrent."
+        );
+    }
+    Ok(())
 }
 
 /// Chemin de fichier plutôt que lien (« C:\… », « \\serveur\… », « /… » ou « ….torrent »).
@@ -1278,6 +1294,20 @@ mod sandbox_tests {
         assert!(looks_like_path("/home/x/a"));
         assert!(!looks_like_path("magnet:?xt=urn:btih:abc"));
         assert!(!looks_like_path("n'importe quoi"));
+    }
+}
+
+#[cfg(test)]
+mod magnet_tests {
+    #[test]
+    fn v2_only_magnets_get_a_clear_error_and_hybrids_pass() {
+        let v1 = "xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a";
+        let v2 = "xt=urn:btmh:1220caf1e1c30e81cb361b9ee167c4aa64228a7fa4fa9f6105232b28ad099f3a302e";
+        assert!(super::add_source(&format!("magnet:?{v1}&{v2}&dn=hybride")).is_ok());
+        let err = super::add_source(&format!("magnet:?{v2}")).err().unwrap().to_string();
+        assert!(err.contains("BitTorrent v2"), "{err}");
+        let err = super::add_source("magnet:?xt=urn:btih:zz").err().unwrap().to_string();
+        assert!(err.contains("invalide"), "{err}");
     }
 }
 

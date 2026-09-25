@@ -253,13 +253,10 @@ fn short_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..12].to_owned()
 }
 
-/// Empreinte hexadécimale d'un magnet (xt=urn:btih:…), si elle y figure sous cette forme.
+/// Empreinte v1 d'un magnet en hexadécimal (xt=urn:btih:…, écrite en hexadécimal ou en base 32,
+/// magnet hybride compris).
 pub(super) fn magnet_hash(link: &str) -> Option<String> {
-    let url = url::Url::parse(link).ok()?;
-    url.query_pairs().find_map(|(key, value)| {
-        let hash = value.strip_prefix("urn:btih:")?;
-        (key == "xt" && hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit())).then(|| hash.to_lowercase())
-    })
+    Some(librqbit::Magnet::parse(link).ok()?.as_id20()?.as_string())
 }
 
 fn magnet_name(link: &str) -> Option<String> {
@@ -335,6 +332,18 @@ mod tests {
             assert!(super::magnet_in_text(text).is_none(), "{text}");
         }
         assert!(super::magnet_in_text(&format!("{hex}&tr={}", "a".repeat(9000))).is_none());
+    }
+
+    #[test]
+    fn magnet_hash_reads_hex_base32_and_hybrid_magnets() {
+        let hex = "e8812d0e9b24a9a82a1376d50f2b786ee6ea797a";
+        assert_eq!(super::magnet_hash(&format!("magnet:?xt=urn:btih:{}", hex.to_uppercase())).as_deref(), Some(hex));
+        // même torrent, empreinte en base 32 : reconnu comme doublon
+        let b32 = "5CAS2DU3ESU2QKQTO3KQ6K3YN3TOU6L2";
+        assert_eq!(super::magnet_hash(&format!("magnet:?xt=urn:btih:{b32}")).as_deref(), Some(hex));
+        let v2 = "urn:btmh:1220caf1e1c30e81cb361b9ee167c4aa64228a7fa4fa9f6105232b28ad099f3a302e";
+        assert_eq!(super::magnet_hash(&format!("magnet:?xt=urn:btih:{hex}&xt={v2}")).as_deref(), Some(hex));
+        assert_eq!(super::magnet_hash(&format!("magnet:?xt={v2}")), None);
     }
 
     #[test]
