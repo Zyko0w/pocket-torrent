@@ -83,6 +83,23 @@ jobs:
         working-directory: src-tauri
         run: cargo test -p librqbit-tracker-comms --lib
 
+      - name: Rust — tests du moteur (librqbit vendorisé : essaims locaux, tests d'intrusion)
+        working-directory: src-tauri/vendor/librqbit
+        run: >-
+          cargo test --lib --target-dir ../../target/librqbit-tests --no-default-features --features rust-tls
+          --config 'patch.crates-io.librqbit-dualstack-sockets.path="../librqbit-dualstack-sockets"'
+          --config 'patch.crates-io.librqbit-tracker-comms.path="../librqbit-tracker-comms"'
+          --config 'patch.crates-io.librqbit-dht.path="../librqbit-dht"'
+          --config 'patch.crates-io.librqbit-core.path="../librqbit-core"'
+          --config 'patch.crates-io.librqbit-bencode.path="../librqbit-bencode"'
+          --config 'patch.crates-io.librqbit-peer-protocol.path="../librqbit-peer-protocol"'
+          --config 'patch.crates-io.librqbit-upnp.path="../librqbit-upnp"'
+          --config 'patch.crates-io.librqbit-utp.path="../librqbit-utp"'
+
+      - name: Rust — tests UPnP (faux appareil du réseau local)
+        working-directory: src-tauri/vendor/librqbit-upnp
+        run: cargo test --lib --target-dir ../../target/upnp-tests
+
       - name: Rust — tests µTP (librqbit-utp vendorisé)
         working-directory: src-tauri/vendor/librqbit-utp
         run: cargo test --lib --target-dir ../../target/utp-tests
