@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { FileArrowUp, Plus, SpinnerGap, WarningCircle } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { api, errorMessage, type AddOptions, type Dest, type Priority } from '../api'
+import { Select } from './Select'
 import { plural } from '../format'
 import { parseLinks } from '../links'
 import type { AddRequest } from './AddDialog'
@@ -144,29 +145,21 @@ export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory,
         </label>
         <div className='composer-selects'>
           {categories.length > 0 && (
-            <label className='select-inline'>
-              <span className='sr-only'>Catégorie</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                <option value=''>Sans catégorie</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </label>
+            <Select
+              compact ariaLabel='Catégorie' value={category} onChange={setCategory}
+              options={[{ value: '', label: 'Sans catégorie' }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+            />
           )}
-          <label className='select-inline'>
-            <span className='sr-only'>Priorité</span>
-            <select value={priority} title='Ordre dans la file d’attente, et part du débit quand plusieurs téléchargent en même temps' onChange={(e) => setPriority(e.target.value as Priority)}>
-              <option value='high'>Priorité haute</option>
-              <option value='normal'>Priorité normale</option>
-              <option value='low'>Priorité basse</option>
-            </select>
-          </label>
-          <label className='select-inline'>
-            <span className='sr-only'>Destination</span>
-            <select value={dest} title='Garder les fichiers sur ce PC, ou les envoyer sur storage.to une fois terminés (lien de partage)' onChange={(e) => setDest(e.target.value as Dest)}>
-              <option value='local'>Garder sur le PC</option>
-              <option value='storageTo'>Envoyer sur storage.to</option>
-            </select>
-          </label>
+          <Select
+            compact ariaLabel='Priorité' value={priority} onChange={(v) => setPriority(v as Priority)}
+            title='Ordre dans la file d’attente, et part du débit quand plusieurs téléchargent en même temps'
+            options={[{ value: 'high', label: 'Priorité haute' }, { value: 'normal', label: 'Priorité normale' }, { value: 'low', label: 'Priorité basse' }]}
+          />
+          <Select
+            compact ariaLabel='Destination' value={dest} onChange={(v) => setDest(v as Dest)}
+            title='Garder les fichiers sur ce PC, ou les envoyer sur storage.to une fois terminés (lien de partage)'
+            options={[{ value: 'local', label: 'Garder sur le PC' }, { value: 'storageTo', label: 'Envoyer sur storage.to' }]}
+          />
         </div>
       </div>
     </form>

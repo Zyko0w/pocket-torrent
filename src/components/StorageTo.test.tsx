@@ -23,7 +23,8 @@ describe('storage.to', () => {
         <Composer prefill='magnet:?xt=urn:btih:aa' onPrefillUsed={vi.fn()} categories={[]} defaultCategory='' onChooseFiles={vi.fn()} onAdded={vi.fn()} />
       </ToastProvider>
     )
-    fireEvent.change(screen.getByDisplayValue('Garder sur le PC'), { target: { value: 'storageTo' } })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Destination' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Envoyer sur storage.to' }))
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))
     await vi.waitFor(() => expect(mocked).toHaveBeenCalledWith('add_links', expect.objectContaining({
       options: expect.objectContaining({ dest: 'storageTo' })

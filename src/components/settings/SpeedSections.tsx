@@ -1,6 +1,7 @@
 // Vitesses, file d'attente, partage, planificateur et mode jeu.
 import type { Settings } from '../../api'
 import { Check, Section, resetOf, toFloat, toInt, type SectionProps } from './fields'
+import { Select } from '../Select'
 
 const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 const minutesToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
@@ -155,18 +156,17 @@ export function GameSection (props: SectionProps & { processes: string; onProces
       <div className='field-pair'>
         <div className='field'>
           <label htmlFor='game-mode'>Activation</label>
-          <select id='game-mode' value={gameMode.mode} onChange={(e) => setGame({ mode: e.target.value as Settings['gameMode']['mode'] })}>
-            <option value='auto'>Automatique (programmes ci-dessous)</option>
-            <option value='on'>Toujours activé</option>
-            <option value='off'>Désactivé</option>
-          </select>
+          <Select
+            id='game-mode' ariaLabel='Activation' value={gameMode.mode} onChange={(v) => setGame({ mode: v as Settings['gameMode']['mode'] })}
+            options={[{ value: 'auto', label: 'Automatique (programmes ci-dessous)' }, { value: 'on', label: 'Toujours activé' }, { value: 'off', label: 'Désactivé' }]}
+          />
         </div>
         <div className='field'>
           <label htmlFor='game-action'>Pendant le jeu</label>
-          <select id='game-action' value={gameMode.action} onChange={(e) => setGame({ action: e.target.value as Settings['gameMode']['action'] })}>
-            <option value='limit'>Limiter la vitesse</option>
-            <option value='pause'>Mettre les téléchargements en pause</option>
-          </select>
+          <Select
+            id='game-action' ariaLabel='Pendant le jeu' value={gameMode.action} onChange={(v) => setGame({ action: v as Settings['gameMode']['action'] })}
+            options={[{ value: 'limit', label: 'Limiter la vitesse' }, { value: 'pause', label: 'Mettre les téléchargements en pause' }]}
+          />
         </div>
       </div>
       <div className='field-pair'>

@@ -5,6 +5,7 @@ import { api, errorMessage, type FeedStatus, type Settings } from '../../api'
 import { formatDate } from '../../format'
 import { useInterval } from '../../hooks'
 import { useToast } from '../Toast'
+import { Select } from '../Select'
 import { Check, Section, type SectionProps } from './fields'
 
 type Feed = Settings['rss']['feeds'][number]
@@ -68,10 +69,10 @@ function FeedCard ({ feed, index, status, categories, onChange, onRemove }: {
         {categories.length > 0 && (
           <div className='field'>
             <label htmlFor={`${id}-category`}>Catégorie</label>
-            <select id={`${id}-category`} value={feed.category ?? ''} onChange={(e) => onChange({ category: e.target.value || null })}>
-              <option value=''>Sans catégorie</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <Select
+              id={`${id}-category`} ariaLabel='Catégorie' value={feed.category ?? ''} onChange={(v) => onChange({ category: v || null })}
+              options={[{ value: '', label: 'Sans catégorie' }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+            />
           </div>
         )}
         <Check checked={feed.skipRepeats} onChange={(skipRepeats) => onChange({ skipRepeats })} label='Un seul fichier par épisode' help='S02E05 publié en 1080p puis en 720p : seul le premier est ajouté.' />
@@ -138,9 +139,11 @@ export function RssSection ({ settings, update }: SectionProps) {
       <div className='field'>
         <label htmlFor='rss-interval'>Vérifier les flux</label>
         <div className='input-row'>
-          <select id='rss-interval' value={rss.intervalMinutes} onChange={(e) => update({ rss: { ...rss, intervalMinutes: Number(e.target.value) } })}>
-            {[5, 15, 30, 60, 180].map((m) => <option key={m} value={m}>toutes les {m < 60 ? `${m} min` : `${m / 60} h`}</option>)}
-          </select>
+          <Select
+            id='rss-interval' ariaLabel='Vérifier les flux' value={String(rss.intervalMinutes)}
+            onChange={(v) => update({ rss: { ...rss, intervalMinutes: Number(v) } })}
+            options={[5, 15, 30, 60, 180].map((m) => ({ value: String(m), label: `toutes les ${m < 60 ? `${m} min` : `${m / 60} h`}` }))}
+          />
           <button type='button' className='btn btn-ghost btn-sm' disabled={checking || !rss.feeds.some((f) => f.id && f.enabled)} onClick={checkNow}>
             {checking ? <SpinnerGap size={14} className='spin' /> : <ArrowClockwise size={14} />} Vérifier maintenant
           </button>

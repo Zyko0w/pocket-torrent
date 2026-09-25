@@ -10,6 +10,7 @@ import { useInterval } from './hooks'
 import { SORTS, loadSort, saveSort, searchJobs, sortJobs, type SortKey } from './jobList'
 import { AddDialog, type AddRequest } from './components/AddDialog'
 import { Composer } from './components/Composer'
+import { Select } from './components/Select'
 import { DeleteDialog } from './components/DeleteDialog'
 import { JobRow } from './components/JobRow'
 import { Logo } from './components/Logo'
@@ -259,12 +260,10 @@ function Downloads ({ view, overview, jobs, category, refresh, prefill, onPrefil
           />
         </label>
         <span className='spacer' />
-        <label className='select-inline'>
-          <span className='sr-only'>Trier</span>
-          <select value={sort} onChange={(e) => changeSort(e.target.value as SortKey)}>
-            {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-          </select>
-        </label>
+        <Select
+          compact ariaLabel='Trier' value={sort} onChange={(v) => changeSort(v as SortKey)}
+          options={SORTS.map((s) => ({ value: s.key, label: s.label }))}
+        />
       </div>
 
       {shown.length

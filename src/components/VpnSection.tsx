@@ -7,6 +7,7 @@ import { api, errorMessage, type NetworkAdapter, type Settings, type TunnelInfo,
 import { formatSize } from '../format'
 import { useInterval } from '../hooks'
 import { useToast } from './Toast'
+import { Select } from './Select'
 import { Check, SecretField } from './settings/fields'
 
 interface VpnSectionProps {
@@ -171,17 +172,14 @@ export function VpnSection ({ vpn, savedMode, onChange, passwordSet, password, o
         <div className='field'>
           <label htmlFor='vpn-adapter'>Carte réseau du VPN</label>
           <div className='input-row'>
-            <select id='vpn-adapter' value={vpn.adapter} onChange={(e) => onChange({ ...vpn, adapter: e.target.value })}>
-              <option value=''>Choisir…</option>
-              {vpn.adapter && !adapters?.some((a) => a.name === vpn.adapter) && (
-                <option value={vpn.adapter}>{vpn.adapter} (absente pour l’instant)</option>
-              )}
-              {adapters?.map((a) => (
-                <option key={a.name} value={a.name}>
-                  {a.name}{a.likelyVpn ? ' · VPN probable' : ''}{a.up ? '' : ' · déconnectée'}
-                </option>
-              ))}
-            </select>
+            <Select
+              id='vpn-adapter' ariaLabel='Carte réseau du VPN' value={vpn.adapter} onChange={(adapter) => onChange({ ...vpn, adapter })}
+              options={[
+                { value: '', label: 'Choisir…' },
+                ...(vpn.adapter && !adapters?.some((a) => a.name === vpn.adapter) ? [{ value: vpn.adapter, label: `${vpn.adapter} (absente pour l’instant)` }] : []),
+                ...(adapters ?? []).map((a) => ({ value: a.name, label: `${a.name}${a.likelyVpn ? ' · VPN probable' : ''}${a.up ? '' : ' · déconnectée'}` }))
+              ]}
+            />
             <button type='button' className='btn btn-ghost' title='Actualiser la liste' onClick={loadAdapters}>
               <ArrowClockwise size={16} />
             </button>

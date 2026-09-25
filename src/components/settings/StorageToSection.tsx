@@ -4,6 +4,7 @@ import { CheckCircle, SpinnerGap } from '@phosphor-icons/react'
 import { api, errorMessage, type SecretsInput, type SettingsView } from '../../api'
 import { useToast } from '../Toast'
 import { Check, SecretField, Section, resetOf, type SectionProps } from './fields'
+import { Select } from '../Select'
 
 interface StorageToSectionProps extends SectionProps {
   /** Jeton déjà rangé dans Windows (jamais sa valeur). */
@@ -37,9 +38,10 @@ export function StorageToSection (props: StorageToSectionProps) {
     >
       <div className='field'>
         <label htmlFor='storage-expiry'>Durée de vie des liens</label>
-        <select id='storage-expiry' value={storage.expiryDays} onChange={(e) => set({ expiryDays: Number(e.target.value) })}>
-          {[1, 2, 3, 4, 5, 6, 7].map((days) => <option key={days} value={days}>{days} jour{days > 1 ? 's' : ''}</option>)}
-        </select>
+        <Select
+          id='storage-expiry' ariaLabel='Durée de vie des liens' value={String(storage.expiryDays)} onChange={(v) => set({ expiryDays: Number(v) })}
+          options={[1, 2, 3, 4, 5, 6, 7].map((days) => ({ value: String(days), label: `${days} jour${days > 1 ? 's' : ''}` }))}
+        />
         <p className='help'>Les fichiers sont ensuite effacés de storage.to.</p>
       </div>
       <SecretField
