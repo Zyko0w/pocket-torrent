@@ -326,18 +326,6 @@ impl Manager {
         self.engine.piece_map(&Self::torrent_hash(id)?)
     }
 
-    /// Chemin sur le disque à servir pour le streaming (§7.6) : erreur si le torrent est
-    /// inconnu ou le fichier introuvable, sans exiger qu'il soit déjà entièrement téléchargé.
-    pub fn stream_path(&self, id: &str, file_index: usize) -> anyhow::Result<PathBuf> {
-        self.engine.file_path(&Self::torrent_hash(id)?, file_index)
-    }
-
-    pub fn open_stream_in_player(&self, id: &str, file_index: usize, url: &str) -> anyhow::Result<()> {
-        let path = self.stream_path(id, file_index)?;
-        let name = path.file_name().map_or_else(|| "flux".to_owned(), |n| n.to_string_lossy().into_owned());
-        crate::stream::open_in_player(&self.data_dir, &name, url)
-    }
-
     pub async fn performance_snapshot(&self) -> crate::perf::Snapshot {
         crate::perf::snapshot(&self.engine, &self.settings().download_dir).await
     }

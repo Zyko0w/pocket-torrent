@@ -39,8 +39,8 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§6.3** Sélection de fichiers dans un magnet (BEP 53) | ✅ *déjà présent* | Fonctionnait déjà nativement dans librqbit, non exploité avant vérification |
 | **§6.2 / §6.3** DHT avancé, holepunch, pont WebTorrent | ❌ *refusé* | Non supporté par le moteur ; le holepunch demanderait du code réseau non testable ici (pas de vrai NAT à disposition) |
 | **§7.1-7.5** Démon/API séparés, REST v2, plugins, config TOML, Prometheus | ❌ *refusé* | Refonte d'architecture, hors périmètre d'une amélioration incrémentale. **RSS fait depuis** (0.2.1 : flux de séries, filtres, épisodes, voir §7.3) |
-| **§7.6** Serveur de streaming | ✅ | Serveur HTTP local (`127.0.0.1` uniquement), Range géré par bibliothèque, bouton « Lire » + playlist M3U |
-| **§7.6** Priorité automatique aux sous-titres | ❌ *refusé* | librqbit n'a pas de priorité par fichier (inclure/exclure seulement) ; un contournement en deux temps serait fragile face à la pause/sélection manuelle pour un gain marginal (les .srt sont minuscules, ils arrivent vite de toute façon) |
+| **§7.6** Serveur de streaming | ❌ *retiré (25/09)* | Fait (serveur HTTP local, bouton « Lire ») puis retiré à la demande de l'utilisateur : jugé inutile, et il lisait le fichier tel quel sur le disque (morceaux manquants lus comme du vide) |
+| **§7.6** Priorité automatique aux sous-titres | ❌ *sans objet* | Lecture en flux retirée le 25/09 |
 | **§7.7** Thème clair/sombre | ✅ | Suit le réglage Windows automatiquement |
 | **§7.7** Accessibilité | ⚠️ *audit statique fait* | Noms des boutons, libellés, focus visible, animations réduites : conformes. Corrigés : contrastes du thème clair (4 couleurs sous 4,5:1) et onglets au clavier (motif ARIA). Reste un test réel au lecteur d'écran (NVDA/Narrateur) |
 | **§7.7** Traductions | ❌ *refusé* | Effort continu hors périmètre |
@@ -326,7 +326,7 @@ Si le client est un monolithe, c'est **le chantier le plus rentable** : il perme
 - [ ] Journaux **structurés en JSON**, avec niveau réglable à chaud.
 - [ ] Vérification de santé (*health check*) pour Docker et Kubernetes.
 
-### 7.6 Streaming — **fait pour l'essentiel**
+### 7.6 Streaming — **retiré (25/09/2026)**, à la demande de l'utilisateur
 
 - [x] Serveur HTTP local qui gère les requêtes partielles (*Range*) — `127.0.0.1` uniquement ; sans les délais par pièce (§4.1), non exposés par librqbit.
 - [x] Bouton « ouvrir dans VLC ou mpv », génération d'une liste de lecture M3U.
@@ -596,7 +596,7 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 - [ ] Greffons WASM — refusé, hors périmètre incrémental.
 - [ ] Torrents modifiables (BEP 46), déduplication v2 entre torrents — refusé, non supporté par librqbit.
 - [x] Redirection de port automatique côté VPN — NAT-PMP (ProtonVPN) en 0.2.0 ; API des autres fournisseurs non faites.
-- [x] Serveur de streaming — fait pour l'essentiel (§7.6), sans les délais par pièce ni la priorité aux sous-titres.
+- [ ] Serveur de streaming — fait puis retiré le 25/09 (jugé inutile).
 - [ ] Application mobile — non applicable, client de bureau Windows.
 
 ---

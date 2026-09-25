@@ -16,7 +16,6 @@ mod secrets;
 mod settings;
 mod storage_to;
 mod store;
-mod stream;
 mod system;
 mod tray;
 #[cfg(windows)]
@@ -28,7 +27,6 @@ use tauri::{Emitter, Manager, WindowEvent};
 
 pub struct AppState {
     pub manager: Arc<manager::Manager>,
-    pub stream: stream::StreamServer,
 }
 
 /// Lien magnet ou fichier .torrent passé en argument (clic sur un lien magnet dans le
@@ -65,14 +63,12 @@ pub fn run() {
             perf::mark_start();
             let manager =
                 tauri::async_runtime::block_on(manager::Manager::start(app.handle().clone(), settings_path, data_dir))?;
-            let stream =
-                tauri::async_runtime::block_on(stream::start(manager.clone() as Arc<dyn stream::StreamSource>))?;
 
             let args: Vec<String> = std::env::args().collect();
             if let Some(link) = link_argument(&args) {
                 manager.push_launch_link(link);
             }
-            app.manage(AppState { manager: manager.clone(), stream });
+            app.manage(AppState { manager: manager.clone() });
             tray::create(app.handle())?;
 
             // arrêt de Windows (ou « éteindre à la fin ») : même arrêt propre que « Quitter »
@@ -154,7 +150,6 @@ pub fn run() {
             commands::read_log,
             commands::export_log,
             commands::open_log_folder,
-            commands::play_file,
             commands::drop_torrent_file,
             commands::traffic_stats,
             commands::export_list,

@@ -268,21 +268,6 @@ impl Engine {
         Ok(PieceMap { total_pieces, bits })
     }
 
-    /// Chemin sur le disque du fichier `index` d'un torrent (streaming, §7.6). `index` est
-    /// celui du torrent, comme dans `FileView`, pas une position dans une liste filtrée.
-    pub fn file_path(&self, hash: &str, index: usize) -> anyhow::Result<PathBuf> {
-        let torrent = self.handle(hash)?;
-        let base = torrent.output_folder().to_path_buf();
-        let rel = torrent
-            .with_metadata(|meta| meta.file_infos.get(index).map(|f| f.relative_filename.clone()))?
-            .ok_or_else(|| anyhow!("Fichier introuvable."))?;
-        // jamais hors du dossier du torrent (le serveur de streaming sert ce chemin)
-        if !rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
-            bail!("Fichier introuvable.");
-        }
-        Ok(base.join(rel))
-    }
-
     /// Fichiers choisis du torrent : chemin relatif, chemin sur le disque et taille.
     pub fn selected_file_paths(&self, hash: &str) -> anyhow::Result<Vec<(String, PathBuf, u64)>> {
         let torrent = self.handle(hash)?;

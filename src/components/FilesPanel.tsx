@@ -32,14 +32,6 @@ export function FilesPanel ({ jobId }: { jobId: string }) {
   // gros torrents : la liste complète pèse lourd, rafraîchie moins souvent
   useInterval(load, (files?.length ?? 0) > 2000 ? 10000 : 2000)
 
-  const play = async (file: TorrentFile) => {
-    try {
-      await api.playFile(jobId, file.index)
-    } catch (err) {
-      toast(errorMessage(err))
-    }
-  }
-
   const reorder = async (index: number, up: boolean) => {
     try {
       await api.moveFilePriority(jobId, index, up)
@@ -73,7 +65,7 @@ export function FilesPanel ({ jobId }: { jobId: string }) {
 
   return (
     <div className='panel'>
-      <FilePicker files={files} selected={selected} onChange={(next) => { setSelected(next); setDirty(true) }} showProgress onPlay={play} onReorder={reorder} />
+      <FilePicker files={files} selected={selected} onChange={(next) => { setSelected(next); setDirty(true) }} showProgress onReorder={reorder} />
       {error && <p className='field-error' role='alert'>{error}</p>}
       {dirty && (
         <div className='panel-actions'>

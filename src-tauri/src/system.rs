@@ -196,7 +196,7 @@ mod imp {
         Ok(())
     }
 
-    /// Ouvre un fichier avec le programme associé (§7.6, streaming) : appel direct à
+    /// Ouvre un fichier ou une adresse avec le programme associé : appel direct à
     /// `ShellExecuteW`, sans passer par `cmd.exe` (aucune ré-interprétation du chemin).
     pub fn open_with_default(path: &Path) -> anyhow::Result<()> {
         use std::os::windows::ffi::OsStrExt;

@@ -285,7 +285,6 @@ export const api = {
   readLog: (maxLines: number) => invoke<string>('read_log', { maxLines }),
   exportLog: (path: string) => invoke<void>('export_log', { path }),
   openLogFolder: () => invoke<void>('open_log_folder'),
-  playFile: (id: string, fileIndex: number) => invoke<void>('play_file', { id, fileIndex }),
   trafficStats: () => invoke<TrafficStats>('traffic_stats'),
   exportList: (path: string) => invoke<number>('export_list', { path }),
   importList: (path: string, includeFinished: boolean) =>

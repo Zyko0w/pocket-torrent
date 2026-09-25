@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Play, WarningCircle } from '@phosphor-icons/react'
+import { ArrowDown, ArrowUp, WarningCircle } from '@phosphor-icons/react'
 import type { TorrentFile } from '../api'
 import { formatSize, percent, plural } from '../format'
 
-const PLAYABLE = /\.(mp4|mkv|avi|mov|wmv|m4v|webm|mp3|flac|wav|m4a|ogg)$/i
 /** Lignes affichées d'un coup : au-delà, la fenêtre ralentit (torrents de milliers de fichiers). */
 const PAGE = 300
 
@@ -13,7 +12,6 @@ interface FilePickerProps {
   onChange: (selected: Set<number>) => void
   showProgress?: boolean
   /** Bouton « lire » par fichier (§7.6) : seulement pour un torrent déjà ajouté au moteur. */
-  onPlay?: (file: TorrentFile) => void
   /**
    * Priorité de téléchargement par fichier (§4.1/§5) : la liste `files` doit déjà être triée
    * par priorité (le moteur le fait). Seulement pour un torrent déjà ajouté et en téléchargement.
@@ -21,7 +19,7 @@ interface FilePickerProps {
   onReorder?: (index: number, up: boolean) => void
 }
 
-export function FilePicker ({ files, selected, onChange, showProgress = false, onPlay, onReorder }: FilePickerProps) {
+export function FilePicker ({ files, selected, onChange, showProgress = false, onReorder }: FilePickerProps) {
   const [shown, setShown] = useState(PAGE)
   const total = files.filter((f) => selected.has(f.index)).reduce((sum, f) => sum + f.length, 0)
   const all = files.length > 0 && selected.size === files.length
@@ -81,14 +79,6 @@ export function FilePicker ({ files, selected, onChange, showProgress = false, o
                     <ArrowDown size={16} />
                   </button>
                 </>
-              )}
-              {onPlay && file.included && PLAYABLE.test(file.path) && (
-                <button
-                  type='button' className='icon-btn' title='Lire' aria-label={`Lire ${file.path}`}
-                  onClick={(e) => { e.preventDefault(); onPlay(file) }}
-                >
-                  <Play size={16} />
-                </button>
               )}
             </label>
             {file.danger && <p className='field-error' style={{ marginTop: 2, marginLeft: 26 }}>{file.danger}</p>}

@@ -401,12 +401,3 @@ pub async fn export_log(state: State<'_, AppState>, path: PathBuf) -> CommandRes
 pub async fn open_log_folder(state: State<'_, AppState>) -> CommandResult<()> {
     state.manager.open_log_folder().map_err(message)
 }
-
-// -------------------------------------------------------------- streaming (§7.6)
-
-/// Ouvre le fichier `file_index` du torrent dans le lecteur associé aux .m3u, en streaming.
-#[tauri::command]
-pub async fn play_file(state: State<'_, AppState>, id: String, file_index: usize) -> CommandResult<()> {
-    let url = state.stream.url(&id, file_index);
-    state.manager.open_stream_in_player(&id, file_index, &url).map_err(message)
-}

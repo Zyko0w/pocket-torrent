@@ -16,7 +16,6 @@
 **Téléchargement**
 - Liens magnet, fichiers `.torrent` (y compris par glisser-déposer) et liens directs HTTP(S) avec reprise.
 - Sélection et ordre de priorité des fichiers, avant et pendant le téléchargement.
-- Lecture des vidéos en cours de téléchargement (VLC, mpv…).
 - File d'attente à trois niveaux de priorité, qui déterminent l'ordre de démarrage et la part de bande passante.
 - Limites de vitesse globales et par téléchargement, planificateur horaire.
 - Catégories avec dossier dédié.
