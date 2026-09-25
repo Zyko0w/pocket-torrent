@@ -16,6 +16,12 @@ use super::peer::{LivePeerState, Peer, PeerRx, PeerState, PeerTx};
 
 pub mod stats;
 
+/// Pocket Torrent : adresses de pairs gardées au plus par torrent (libtorrent : 3 000 par défaut).
+/// Sans limite, un pair qui envoyait des messages PEX en boucle, remplis d'adresses inventées,
+/// remplissait la mémoire et faisait tenter des connexions vers toutes ces adresses (le client
+/// servait alors à bombarder la cible choisie par l'attaquant).
+pub(crate) const MAX_KNOWN_PEERS: usize = 10_000;
+
 pub(crate) struct PeerStates {
     pub session_stats: Arc<AggregatePeerStatsAtomic>,
 
@@ -40,6 +46,10 @@ impl PeerStates {
 
     pub fn add_if_not_seen(&self, addr: SocketAddr) -> Option<PeerHandle> {
         use dashmap::mapref::entry::Entry;
+        // Pocket Torrent : liste bornée (vérifiée avant `entry`, qui verrouille une partie de la table)
+        if self.states.len() >= MAX_KNOWN_PEERS {
+            return None;
+        }
         match self.states.entry(addr) {
             Entry::Occupied(_) => None,
             Entry::Vacant(vac) => {
@@ -159,5 +169,27 @@ impl PeerStates {
         self.with_live_mut(from_peer, "send_cancellations", |live| {
             live.cancel_inflight_requests_for_piece(stolen_idx);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_peers_are_bounded() {
+        let peers = PeerStates {
+            session_stats: Default::default(),
+            live_outgoing_peers: Default::default(),
+            stats: Default::default(),
+            states: Default::default(),
+        };
+        let addr =
+            |n: usize| SocketAddr::from(([10, (n >> 16) as u8, (n >> 8) as u8, n as u8], 6881));
+        let added = (0..MAX_KNOWN_PEERS + 500)
+            .filter(|n| peers.add_if_not_seen(addr(*n)).is_some())
+            .count();
+        assert_eq!(added, MAX_KNOWN_PEERS);
+        assert_eq!(peers.states.len(), MAX_KNOWN_PEERS);
     }
 }

@@ -181,6 +181,9 @@ pub enum AddIncomingPeerResult {
     ConcurrencyLimitReached,
 }
 
+/// Pocket Torrent : pairs pris au plus dans un message PEX.
+const MAX_PEX_ADDED_PEERS: usize = 50;
+
 pub struct TorrentStateLive {
     peers: PeerStates,
     /// Sérialise les décisions du choker (tour périodique et déblocage immédiat) : sans ça,
@@ -2254,8 +2257,11 @@ impl PeerHandler {
     }
 
     fn on_pex_message(&self, msg: UtPex<ByteBuf<'_>>) {
-        msg.dropped_peers()
-            .chain(msg.added_peers())
+        // Pocket Torrent : seulement les pairs ajoutés (les « partis » étaient ajoutés aussi), et
+        // 50 au plus par message comme le prévoit le PEX : un message énorme ne sert qu'à inonder
+        // la liste (bornée en plus par `peers::MAX_KNOWN_PEERS`).
+        msg.added_peers()
+            .take(MAX_PEX_ADDED_PEERS)
             .for_each(|peer| {
                 self.state
                     .add_peer_if_not_seen(peer.addr)
