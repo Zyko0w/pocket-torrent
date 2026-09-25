@@ -2062,13 +2062,16 @@ impl PeerHandler {
                 Some(next) => next,
                 None => {
                     debug!("no pieces to request");
-                    match aframe!(tokio::time::timeout(
+                    // Pocket Torrent : tant que le torrent n'est pas fini, nouvel essai toutes les
+                    // 250 ms (fin de partie : une pièce en retard chez un autre pair peut être
+                    // reprise, voir `PieceTracker::acquire_piece`) ; avant, jusqu'à 5 s d'attente
+                    let wait = if self.state.is_finished() {
                         // Half of default rw timeout not to race with it.
-                        Duration::from_secs(5),
-                        new_piece_notify
-                    ))
-                    .await
-                    {
+                        Duration::from_secs(5)
+                    } else {
+                        Duration::from_millis(250)
+                    };
+                    match aframe!(tokio::time::timeout(wait, new_piece_notify)).await {
                         Ok(()) => debug!("woken up, new pieces might be available"),
                         Err(_) => debug!("woken up by sleep timer"),
                     }

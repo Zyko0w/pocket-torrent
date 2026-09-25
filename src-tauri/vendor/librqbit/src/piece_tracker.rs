@@ -29,6 +29,9 @@ use crate::{
 pub struct InflightPiece {
     pub peer: PeerHandle,
     pub started: Instant,
+    /// Pocket Torrent : temps moyen par pièce de ce pair quand il l'a prise (fin de partie : on
+    /// ne la lui reprend que s'il est nettement plus lent).
+    pub peer_avg_time: Option<Duration>,
 }
 
 /// Result of attempting to acquire a piece.
@@ -70,6 +73,13 @@ where
     /// d'origine (priorité des fichiers, puis première/dernière/milieu de chaque fichier).
     pub piece_availability: Option<&'a dyn Fn(ValidPieceIndex) -> u16>,
 }
+
+/// Fin de partie : le propriétaire doit être au moins aussi lent pour qu'on lui reprenne sa pièce.
+const ENDGAME_SLOWER: f64 = 3.0;
+/// Fin de partie : ce pair n'a encore aucune vitesse mesurée, délai avant de reprendre une pièce.
+const ENDGAME_UNKNOWN_SELF: Duration = Duration::from_secs(2);
+/// Fin de partie : délai avant de reprendre une pièce à un pair sans vitesse mesurée.
+const ENDGAME_UNKNOWN_OWNER: Duration = Duration::from_millis(500);
 
 /// Coordinates piece download state.
 ///
@@ -143,18 +153,26 @@ impl PieceTracker {
                 && !self.inflight.contains_key(&piece)
                 && (req.peer_has_piece)(piece)
             {
-                return self.reserve_piece(piece, req.peer);
+                return self.reserve_piece(piece, req.peer, req.peer_avg_time);
             }
         }
 
         // Then check naturally ordered queued pieces
         // Note: iter_queued_pieces only returns pieces in queue_pieces (not in-flight)
         if let Some(piece) = self.pick_queued_piece(&req) {
-            return self.reserve_piece(piece, req.peer);
+            return self.reserve_piece(piece, req.peer, req.peer_avg_time);
         }
 
         // 3. Try steal with 3x threshold (moderately slow peer)
         if let Some(result) = self.try_steal(&req, 3.0) {
+            return result;
+        }
+
+        // 4. Pocket Torrent : fin de partie. Plus rien en file pour ce pair : il reprend une pièce
+        // en retard chez un pair nettement plus lent que lui (voir `try_steal_endgame`). Sans ça,
+        // une source lente qui gardait une des dernières pièces faisait attendre la fin (le
+        // « bloqué à 99 % » : 5 s pour 2 Mio dans `tests::e2e_endgame`, 0,3 s depuis).
+        if let Some(result) = self.try_steal_endgame(&req) {
             return result;
         }
 
@@ -210,13 +228,19 @@ impl PieceTracker {
     }
 
     /// Reserve a piece: remove from queue, add to inflight.
-    fn reserve_piece(&mut self, piece: ValidPieceIndex, peer: PeerHandle) -> AcquireResult {
+    fn reserve_piece(
+        &mut self,
+        piece: ValidPieceIndex,
+        peer: PeerHandle,
+        peer_avg_time: Option<Duration>,
+    ) -> AcquireResult {
         self.chunks.reserve_needed_piece(piece);
         self.inflight.insert(
             piece,
             InflightPiece {
                 peer,
                 started: Instant::now(),
+                peer_avg_time,
             },
         );
         AcquireResult::Reserved(piece)
@@ -235,7 +259,47 @@ impl PieceTracker {
     {
         let my_avg = req.peer_avg_time?;
         let min_elapsed = Duration::from_secs_f64(my_avg.as_secs_f64() * threshold);
+        self.steal_where(req, |_, elapsed| elapsed >= min_elapsed)
+    }
 
+    /// Fin de partie : pièce en cours chez un pair au moins `ENDGAME_SLOWER` fois plus lent que
+    /// celui-ci (temps moyens par pièce), et en cours depuis au moins le temps moyen de ce
+    /// pair-ci. Entre pairs de vitesse comparable, jamais : sinon ils se reprendraient les
+    /// dernières pièces les uns aux autres sans fin et aucune n'aboutirait. Propriétaire encore
+    /// sans vitesse mesurée : repris après `ENDGAME_UNKNOWN_OWNER`. Ce pair-ci sans vitesse
+    /// mesurée : après `ENDGAME_UNKNOWN_SELF`.
+    fn try_steal_endgame<I, P, S>(&mut self, req: &AcquireRequest<I, P, S>) -> Option<AcquireResult>
+    where
+        I: Iterator<Item = ValidPieceIndex>,
+        P: Fn(ValidPieceIndex) -> bool,
+        S: Fn(ValidPieceIndex) -> bool,
+    {
+        let Some(mine) = req.peer_avg_time else {
+            // ce pair n'a encore fini aucune pièce : filet de sécurité, seulement pour une pièce
+            // très en retard (les morceaux déjà reçus sont gardés : même un échange entre deux
+            // pairs inconnus fait avancer la pièce)
+            return self.steal_where(req, |_, elapsed| elapsed >= ENDGAME_UNKNOWN_SELF);
+        };
+        self.steal_where(req, |owner_avg, elapsed| match owner_avg {
+            Some(owner) => {
+                owner.as_secs_f64() >= mine.as_secs_f64() * ENDGAME_SLOWER && elapsed >= mine
+            }
+            None => elapsed >= ENDGAME_UNKNOWN_OWNER.max(mine * 3),
+        })
+    }
+
+    /// Reprend, parmi les pièces en cours chez d'autres pairs que ce pair-ci a, celle en cours
+    /// depuis le plus longtemps qui remplit `allowed(temps moyen du propriétaire, durée)`.
+    fn steal_where<I, P, S>(
+        &mut self,
+        req: &AcquireRequest<I, P, S>,
+        allowed: impl Fn(Option<Duration>, Duration) -> bool,
+    ) -> Option<AcquireResult>
+    where
+        I: Iterator<Item = ValidPieceIndex>,
+        P: Fn(ValidPieceIndex) -> bool,
+        S: Fn(ValidPieceIndex) -> bool,
+    {
         // Find the slowest piece from another peer that exceeds threshold
         // and that the stealing peer actually has (can download)
         let (piece, old_peer, _) = self
@@ -243,8 +307,8 @@ impl PieceTracker {
             .iter()
             .filter(|(_, info)| info.peer != req.peer)
             .filter(|(p, _)| (req.peer_has_piece)(**p))
+            .filter(|(_, info)| allowed(info.peer_avg_time, info.started.elapsed()))
             .map(|(p, info)| (*p, info.peer, info.started.elapsed()))
-            .filter(|(_, _, elapsed)| *elapsed >= min_elapsed)
             .max_by_key(|(_, _, elapsed)| *elapsed)?;
 
         // Check can_steal (e.g., per_piece_lock)
@@ -256,6 +320,7 @@ impl PieceTracker {
         let info = self.inflight.get_mut(&piece)?;
         info.peer = req.peer;
         info.started = Instant::now();
+        info.peer_avg_time = req.peer_avg_time;
 
         Some(AcquireResult::Stolen {
             piece,
@@ -462,6 +527,64 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    /// Une demande de pièce pour `who` (vitesse `avg`), qui a toutes les pièces.
+    fn ask(
+        tracker: &mut PieceTracker,
+        files: &FileInfos,
+        who: PeerHandle,
+        avg: Option<Duration>,
+    ) -> AcquireResult {
+        tracker.acquire_piece(AcquireRequest {
+            peer: who,
+            peer_avg_time: avg,
+            priority_pieces: std::iter::empty(),
+            file_priorities: &make_default_file_priorities(files),
+            file_infos: files,
+            peer_has_piece: |_| true,
+            can_steal: |_| true,
+            piece_availability: None,
+        })
+    }
+
+    /// Fin de partie : jamais de reprise entre pairs de même vitesse (sinon ils se renverraient
+    /// la dernière pièce sans fin) ; reprise chez un pair au moins 3 fois plus lent.
+    #[test]
+    fn endgame_steals_only_from_much_slower_peers() {
+        let files = make_test_file_infos(1);
+        let ms = Duration::from_millis;
+
+        // la seule pièce est chez un pair aussi rapide, en cours depuis plus que notre temps moyen
+        // (mais moins que les 3 fois de la règle d'origine du moteur) : pas de reprise
+        let mut tracker = PieceTracker::new(make_test_chunk_tracker(1));
+        assert!(matches!(
+            ask(&mut tracker, &files, peer(1), Some(ms(100))),
+            AcquireResult::Reserved(_)
+        ));
+        std::thread::sleep(ms(150));
+        assert!(matches!(
+            ask(&mut tracker, &files, peer(2), Some(ms(100))),
+            AcquireResult::NoneAvailable
+        ));
+
+        // chez un pair 10 fois plus lent : reprise dès que la pièce a pris plus que notre temps moyen
+        let mut tracker = PieceTracker::new(make_test_chunk_tracker(1));
+        assert!(matches!(
+            ask(&mut tracker, &files, peer(1), Some(ms(100))),
+            AcquireResult::Reserved(_)
+        ));
+        std::thread::sleep(ms(20));
+        match ask(&mut tracker, &files, peer(2), Some(ms(10))) {
+            AcquireResult::Stolen { from_peer, .. } => assert_eq!(from_peer, peer(1)),
+            other => panic!("pas de reprise : {other:?}"),
+        }
+        // le pair lent ne la reprend pas en retour
+        std::thread::sleep(ms(20));
+        assert!(matches!(
+            ask(&mut tracker, &files, peer(1), Some(ms(100))),
+            AcquireResult::NoneAvailable
+        ));
     }
 
     #[test]
