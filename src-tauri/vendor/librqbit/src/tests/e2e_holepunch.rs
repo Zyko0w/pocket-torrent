@@ -142,7 +142,8 @@ async fn relay_puts_two_peers_in_touch() {
     );
     live_a.holepunch_rendezvous(addr(BASE), addr(BASE + 2));
 
-    // A et C connectés l'un à l'autre, par la mise en relation
+    // A et C connectés l'un à l'autre, par la mise en relation. Les deux « Connect » peuvent
+    // arriver après la connexion elle-même (machine chargée) : on attend les trois.
     loop {
         let a_sees_c = live_a.peers.with_live(addr(BASE + 2), |_| ()).is_some();
         let c_sees_a = c.live().is_some_and(|live| {
@@ -151,21 +152,16 @@ async fn relay_puts_two_peers_in_touch() {
                 .iter()
                 .any(|e| e.key().port() != BASE && e.value().get_live().is_some())
         });
-        if a_sees_c || c_sees_a {
+        let was_relayed = HOLEPUNCH_RELAYED.load(Ordering::Relaxed) > relayed;
+        let both_told = HOLEPUNCH_CONNECTS.load(Ordering::Relaxed) >= connects + 2;
+        if (a_sees_c || c_sees_a) && was_relayed && both_told {
             break;
         }
         assert!(
             started.elapsed() < Duration::from_secs(40),
-            "A et C jamais mis en relation"
+            "A et C jamais mis en relation (connectés : {}, relayé : {was_relayed}, tous deux prévenus : {both_told})",
+            a_sees_c || c_sees_a
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    assert!(
-        HOLEPUNCH_RELAYED.load(Ordering::Relaxed) > relayed,
-        "B n'a rien relayé"
-    );
-    assert!(
-        HOLEPUNCH_CONNECTS.load(Ordering::Relaxed) >= connects + 2,
-        "A et C n'ont pas tous deux été prévenus"
-    );
 }

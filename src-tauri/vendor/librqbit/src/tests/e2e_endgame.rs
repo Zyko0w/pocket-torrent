@@ -110,7 +110,10 @@ async fn download_time(base_port: u16) -> Duration {
 #[ignore]
 async fn endgame_measure() {
     setup_test_logging();
-    let base: u16 = std::env::var("ENDGAME_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(15400);
+    let base: u16 = std::env::var("ENDGAME_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(15400);
     for round in 0..5u16 {
         let elapsed = download_time(base + round * 3).await;
         println!("essai {round} : {elapsed:?}");

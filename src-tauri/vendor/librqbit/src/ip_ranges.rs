@@ -6,8 +6,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::Range;
 use std::path::Path;
 use std::str::FromStr;
-use tokio::io::{AsyncBufRead, AsyncRead};
 use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncBufRead, AsyncRead};
 use tokio::{io::AsyncBufReadExt, io::BufReader};
 use tracing::trace;
 use url::Url;
@@ -77,7 +77,9 @@ impl IpRanges {
         }
 
         // téléchargée ici, la liste partirait par un client par défaut : hors du VPN, même coupé
-        anyhow::bail!("only file: URLs are supported, the application downloads online lists itself")
+        anyhow::bail!(
+            "only file: URLs are supported, the application downloads online lists itself"
+        )
     }
 
     pub async fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -201,7 +203,10 @@ mod tests {
     async fn hostile_lists_are_bounded() {
         // ligne sans fin
         let endless = vec![b'1'; MAX_LINE_BYTES * 4];
-        let err = IpRanges::create_from_stream(&mut Cursor::new(endless)).await.err().unwrap();
+        let err = IpRanges::create_from_stream(&mut Cursor::new(endless))
+            .await
+            .err()
+            .unwrap();
         assert!(format!("{err:#}").contains("too long"), "{err:#}");
 
         // archive gzip piégée : 600 Mio de lignes valides, quelques centaines de Kio compressées
@@ -216,11 +221,18 @@ mod tests {
         encoder.shutdown().await.unwrap();
         let bomb = encoder.into_inner();
         assert!(bomb.len() < 8 * 1024 * 1024, "{}", bomb.len());
-        let err = IpRanges::create_from_stream(&mut Cursor::new(bomb)).await.err().unwrap();
+        let err = IpRanges::create_from_stream(&mut Cursor::new(bomb))
+            .await
+            .err()
+            .unwrap();
         assert!(format!("{err:#}").contains("too large"), "{err:#}");
 
         // téléchargement direct par le moteur : refusé (voir `load_from_url`)
-        assert!(IpRanges::load_from_url("http://127.0.0.1:9/liste.p2p").await.is_err());
+        assert!(
+            IpRanges::load_from_url("http://127.0.0.1:9/liste.p2p")
+                .await
+                .is_err()
+        );
     }
 
     use crate::tests::test_util::setup_test_logging;
