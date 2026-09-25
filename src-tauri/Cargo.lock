@@ -3693,6 +3693,7 @@ dependencies = [
  "percent-encoding",
  "pocket-torrent-tunnel",
  "quick-xml 0.42.0",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

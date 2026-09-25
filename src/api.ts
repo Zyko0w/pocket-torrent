@@ -194,7 +194,7 @@ export interface Settings {
   storageTo: { expiryDays: number; deleteAfterUpload: boolean }
   rss: {
     intervalMinutes: number
-    feeds: { id: string; name: string; url: string; include: string; exclude: string; category: string | null; enabled: boolean; skipRepeats: boolean }[]
+    feeds: { id: string; name: string; url: string; include: string; exclude: string; category: string | null; enabled: boolean; skipRepeats: boolean; regex: boolean }[]
   }
   vpn: { mode: VpnMode; adapter: string; portForwarding: boolean }
   privacy: { encryption: 'off' | 'prefer' | 'require'; hideAnnounces: boolean; hardenedMode: boolean }
@@ -256,8 +256,8 @@ export const api = {
   rssStatus: () => invoke<FeedStatus[]>('rss_status'),
   rssCheckNow: () => invoke<FeedStatus[]>('rss_check_now'),
   /** Éléments d'un flux et ceux qui passent les filtres, sans rien ajouter. */
-  rssPreview: (url: string, include: string, exclude: string) =>
-    invoke<{ title: string; matched: boolean }[]>('rss_preview', { url, include, exclude }),
+  rssPreview: (url: string, include: string, exclude: string, regex: boolean) =>
+    invoke<{ title: string; matched: boolean }[]>('rss_preview', { url, include, exclude, regex }),
   /** Débits des 5 dernières minutes d'un téléchargement, ou de l'ensemble (`null`). */
   speedHistory: (id: string | null) => invoke<SpeedHistory>('speed_history', { id }),
   /** Lien magnet copié ailleurs, à proposer au retour sur la fenêtre (sinon `null`). */

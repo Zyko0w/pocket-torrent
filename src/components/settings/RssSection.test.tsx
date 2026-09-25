@@ -9,7 +9,7 @@ import { RssSection } from './RssSection'
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
 const mocked = vi.mocked(invoke)
 const base = defaults as unknown as Settings
-const feed = { id: 'abc123', name: 'Ma série', url: 'https://site.example/rss', include: 'série 1080p', exclude: '', category: null, enabled: true, skipRepeats: true }
+const feed = { id: 'abc123', name: 'Ma série', url: 'https://site.example/rss', include: 'série 1080p', exclude: '', category: null, enabled: true, skipRepeats: true, regex: false }
 
 function renderRss (settings: Settings, answers: Record<string, unknown> = {}) {
   mocked.mockImplementation(async (cmd: string) => answers[cmd] ?? [])
@@ -33,8 +33,14 @@ describe('RssSection', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /Tester les filtres/ }))
     expect(await screen.findByText(/2 éléments dans le flux, 1 passe les filtres/)).toBeTruthy()
-    expect(mocked).toHaveBeenCalledWith('rss_preview', { url: feed.url, include: feed.include, exclude: '' })
+    expect(mocked).toHaveBeenCalledWith('rss_preview', { url: feed.url, include: feed.include, exclude: '', regex: false })
     expect(mocked).not.toHaveBeenCalledWith('add_links', expect.anything())
+  })
+
+  it('la case « Expressions régulières » change le mode des filtres', () => {
+    const update = renderRss({ ...base, rss: { intervalMinutes: 15, feeds: [feed] } })
+    fireEvent.click(screen.getByRole('switch', { name: /Expressions régulières/ }))
+    expect(update).toHaveBeenCalledWith({ rss: expect.objectContaining({ feeds: [expect.objectContaining({ id: 'abc123', regex: true })] }) })
   })
 
   it('affiche l’erreur de la dernière vérification', async () => {

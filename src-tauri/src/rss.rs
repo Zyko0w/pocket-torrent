@@ -228,6 +228,55 @@ fn words(filter: &str) -> Vec<String> {
     filter.split([' ', ',']).map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect()
 }
 
+/// Filtre d'un flux : mots (tous ceux de `include`, aucun de `exclude`) ou expressions
+/// régulières (`include` doit trouver quelque chose, `exclude` rien), sans tenir compte des
+/// majuscules. Préparé une fois par vérification du flux.
+pub enum Filter {
+    Words { include: String, exclude: String },
+    Regex { include: Option<regex::Regex>, exclude: Option<regex::Regex> },
+}
+
+/// Taille maximale d'une expression compilée : le moteur `regex` garantit un temps linéaire,
+/// cette limite borne en plus la mémoire (une expression comme `(a{1000}){1000}` est refusée).
+const MAX_REGEX_BYTES: usize = 256 * 1024;
+
+impl Filter {
+    pub fn new(include: &str, exclude: &str, regex: bool) -> Result<Self, String> {
+        if !regex {
+            return Ok(Filter::Words { include: include.to_owned(), exclude: exclude.to_owned() });
+        }
+        let compile = |pattern: &str, field: &str| -> Result<Option<regex::Regex>, String> {
+            if pattern.trim().is_empty() {
+                return Ok(None);
+            }
+            regex::RegexBuilder::new(pattern)
+                .case_insensitive(true)
+                .size_limit(MAX_REGEX_BYTES)
+                .dfa_size_limit(MAX_REGEX_BYTES)
+                .build()
+                .map(Some)
+                .map_err(|err| match err {
+                    regex::Error::CompiledTooBig(_) => format!("expression « {field} » trop complexe"),
+                    _ => format!("expression « {field} » invalide"),
+                })
+        };
+        Ok(Filter::Regex {
+            include: compile(include, "doit contenir")?,
+            exclude: compile(exclude, "ne doit pas contenir")?,
+        })
+    }
+
+    pub fn matches(&self, title: &str) -> bool {
+        match self {
+            Filter::Words { include, exclude } => matches(title, include, exclude),
+            Filter::Regex { include, exclude } => {
+                include.as_ref().is_none_or(|r| r.is_match(title))
+                    && !exclude.as_ref().is_some_and(|r| r.is_match(title))
+            }
+        }
+    }
+}
+
 /// Le titre contient-il tous les mots de `include` et aucun de `exclude` ? (sans tenir compte
 /// des majuscules ; les points et tirets des titres comptent comme des espaces)
 pub fn matches(title: &str, include: &str, exclude: &str) -> bool {
@@ -392,6 +441,32 @@ mod tests {
         assert!(!matches(title, "série 2160p", ""));
         assert!(!matches(title, "série", "web"));
         assert!(matches(title, "", ""), "sans filtre : tout");
+    }
+
+    #[test]
+    fn regex_filters_need_a_match_and_no_excluded_one() {
+        let filter = Filter::new(r"s0[12]e\d+.*(1080p|2160p)", r"\bhdr\b|\bcam\b", true).unwrap();
+        assert!(filter.matches("Ma.Serie.S01E03.1080p.WEB"));
+        assert!(filter.matches("MA SERIE s02e10 2160P"), "sans tenir compte des majuscules");
+        assert!(!filter.matches("Ma.Serie.S03E01.1080p"), "saison 3");
+        assert!(!filter.matches("Ma.Serie.S01E03.2160p.HDR"), "exclu");
+        assert!(!filter.matches("Ma.Serie.S01E03.720p"));
+        // champs vides : tout passe
+        assert!(Filter::new("", " ", true).unwrap().matches("n'importe quoi"));
+        // mode mots inchangé : les caractères spéciaux y sont des lettres comme les autres
+        assert!(Filter::new("s01e03", "", false).unwrap().matches("Ma.Serie.S01E03"));
+    }
+
+    #[test]
+    fn hostile_regexes_are_refused_not_slow() {
+        assert!(Filter::new("(série", "", true).is_err(), "parenthèse ouverte");
+        let err = Filter::new("(a{1000}){1000}", "", true).err().unwrap();
+        assert!(err.contains("trop complexe"), "{err}");
+        // motif classique de retour arrière catastrophique : temps linéaire avec ce moteur
+        let filter = Filter::new("(a+)+$", "", true).unwrap();
+        let started = std::time::Instant::now();
+        assert!(!filter.matches(&format!("{}!", "a".repeat(100_000))));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

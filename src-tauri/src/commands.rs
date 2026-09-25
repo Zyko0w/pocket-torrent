@@ -247,8 +247,9 @@ pub async fn rss_preview(
     url: String,
     include: String,
     exclude: String,
+    regex: bool,
 ) -> CommandResult<Vec<crate::manager::FeedPreviewItem>> {
-    state.manager.preview_feed(&url, &include, &exclude).await.map_err(message)
+    state.manager.preview_feed(&url, &include, &exclude, regex).await.map_err(message)
 }
 
 /// Débits des 5 dernières minutes, d'un téléchargement ou de l'ensemble (`id` absent).

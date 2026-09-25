@@ -9,7 +9,7 @@ import { Check, Section, type SectionProps } from './fields'
 
 type Feed = Settings['rss']['feeds'][number]
 
-const EMPTY: Feed = { id: '', name: '', url: '', include: '', exclude: '', category: null, enabled: true, skipRepeats: true }
+const EMPTY: Feed = { id: '', name: '', url: '', include: '', exclude: '', category: null, enabled: true, skipRepeats: true, regex: false }
 
 function FeedCard ({ feed, index, status, categories, onChange, onRemove }: {
   feed: Feed
@@ -28,7 +28,7 @@ function FeedCard ({ feed, index, status, categories, onChange, onRemove }: {
     setTesting(true)
     setError('')
     try {
-      setPreview(await api.rssPreview(feed.url, feed.include, feed.exclude))
+      setPreview(await api.rssPreview(feed.url, feed.include, feed.exclude, feed.regex))
     } catch (err) {
       setPreview(null)
       setError(errorMessage(err))
@@ -56,12 +56,12 @@ function FeedCard ({ feed, index, status, categories, onChange, onRemove }: {
       </div>
       <div className='field-pair'>
         <div className='field'>
-          <label htmlFor={`${id}-include`}>Doit contenir <span className='optional'>(tous ces mots)</span></label>
-          <input id={`${id}-include`} className='input' spellCheck={false} placeholder='ma série 1080p' value={feed.include} onChange={(e) => onChange({ include: e.target.value })} />
+          <label htmlFor={`${id}-include`}>Doit contenir <span className='optional'>{feed.regex ? '(expression régulière)' : '(tous ces mots)'}</span></label>
+          <input id={`${id}-include`} className={`input${feed.regex ? ' mono' : ''}`} spellCheck={false} placeholder={feed.regex ? 's0[12]e\\d+.*1080p' : 'ma série 1080p'} value={feed.include} onChange={(e) => onChange({ include: e.target.value })} />
         </div>
         <div className='field'>
-          <label htmlFor={`${id}-exclude`}>Ne doit pas contenir <span className='optional'>(aucun de ces mots)</span></label>
-          <input id={`${id}-exclude`} className='input' spellCheck={false} placeholder='720p cam' value={feed.exclude} onChange={(e) => onChange({ exclude: e.target.value })} />
+          <label htmlFor={`${id}-exclude`}>Ne doit pas contenir <span className='optional'>{feed.regex ? '(expression régulière)' : '(aucun de ces mots)'}</span></label>
+          <input id={`${id}-exclude`} className={`input${feed.regex ? ' mono' : ''}`} spellCheck={false} placeholder={feed.regex ? '\\b(hdr|cam)\\b' : '720p cam'} value={feed.exclude} onChange={(e) => onChange({ exclude: e.target.value })} />
         </div>
       </div>
       <div className='field-pair'>
@@ -75,6 +75,7 @@ function FeedCard ({ feed, index, status, categories, onChange, onRemove }: {
           </div>
         )}
         <Check checked={feed.skipRepeats} onChange={(skipRepeats) => onChange({ skipRepeats })} label='Un seul fichier par épisode' help='S02E05 publié en 1080p puis en 720p : seul le premier est ajouté.' />
+        <Check checked={feed.regex} onChange={(regex) => onChange({ regex })} label='Expressions régulières' help='Pour les filtres précis : « s0[12]e\\d+ » (saisons 1 et 2). Sans tenir compte des majuscules.' />
       </div>
 
       <div className='feed-foot'>

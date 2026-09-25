@@ -68,8 +68,7 @@ pub struct FeedPreviewItem {
 pub(super) fn select_new(
     seen: &mut FeedSeen,
     items: &[rss::FeedItem],
-    include: &str,
-    exclude: &str,
+    filter: &rss::Filter,
     skip_repeats: bool,
 ) -> Vec<(rss::FeedItem, Option<String>)> {
     if !seen.initialized {
@@ -86,7 +85,7 @@ pub(super) fn select_new(
             continue;
         }
         FeedSeen::remember(&mut seen.ids, item.id.clone());
-        if !rss::matches(&item.title, include, exclude) {
+        if !filter.matches(&item.title) {
             continue;
         }
         let episode = if skip_repeats { rss::episode_key(&item.title) } else { None };
@@ -182,11 +181,12 @@ impl Manager {
 
     /// Lit un flux et ajoute ses nouveaux éléments. Renvoie les titres ajoutés.
     async fn check_feed(self: &Arc<Self>, feed: &RssFeed, settings: &Settings) -> anyhow::Result<Vec<String>> {
+        let filter = rss::Filter::new(&feed.include, &feed.exclude, feed.regex).map_err(|e| anyhow!("{e}"))?;
         let items = self.fetch_feed(&feed.url).await?;
         let chosen = {
             let mut feeds = self.feeds.lock();
             let seen = self.load_seen(&mut feeds).entry(feed.id.clone()).or_default();
-            select_new(seen, &items, &feed.include, &feed.exclude, feed.skip_repeats)
+            select_new(seen, &items, &filter, feed.skip_repeats)
         };
         let options = AddOptions { category: feed.category.clone(), ..Default::default() };
         let mut added = Vec::new();
@@ -241,12 +241,19 @@ impl Manager {
     }
 
     /// Bouton « Tester » : éléments du flux et ceux qui passeraient les filtres, sans rien ajouter.
-    pub async fn preview_feed(&self, url: &str, include: &str, exclude: &str) -> anyhow::Result<Vec<FeedPreviewItem>> {
+    pub async fn preview_feed(
+        &self,
+        url: &str,
+        include: &str,
+        exclude: &str,
+        regex: bool,
+    ) -> anyhow::Result<Vec<FeedPreviewItem>> {
+        let filter = rss::Filter::new(include, exclude, regex).map_err(|e| anyhow!("{e}"))?;
         let items = self.fetch_feed(url.trim()).await?;
         Ok(items
             .into_iter()
             .take(50)
-            .map(|item| FeedPreviewItem { matched: rss::matches(&item.title, include, exclude), title: item.title })
+            .map(|item| FeedPreviewItem { matched: filter.matches(&item.title), title: item.title })
             .collect())
     }
 
@@ -352,6 +359,10 @@ async fn download_torrent(client: &reqwest::Client, url: &str) -> anyhow::Result
 mod tests {
     use super::*;
 
+    fn words(include: &str) -> rss::Filter {
+        rss::Filter::new(include, "", false).unwrap()
+    }
+
     fn item(id: &str, title: &str) -> rss::FeedItem {
         rss::FeedItem { title: title.into(), link: format!("magnet:?xt=urn:btih:{id}"), id: id.into() }
     }
@@ -361,29 +372,29 @@ mod tests {
         let mut seen = FeedSeen::default();
         // flux tel qu'il est à l'abonnement (le plus récent en tête)
         let backlog = vec![item("2", "Série S01E02 1080p"), item("1", "Série S01E01 1080p")];
-        assert!(select_new(&mut seen, &backlog, "série 1080p", "", true).is_empty(), "rien de l'historique");
+        assert!(select_new(&mut seen, &backlog, &words("série 1080p"), true).is_empty(), "rien de l'historique");
 
         let mut feed =
             vec![item("5", "Série S01E03 1080p"), item("4", "Série S01E03 720p"), item("3", "Autre S05E01 1080p")];
         feed.extend(backlog);
-        let chosen = select_new(&mut seen, &feed, "série 1080p", "", true);
+        let chosen = select_new(&mut seen, &feed, &words("série 1080p"), true);
         let titles: Vec<&str> = chosen.iter().map(|(i, _)| i.title.as_str()).collect();
         assert_eq!(titles, vec!["Série S01E03 1080p"], "filtre et doublon de qualité");
 
         // relu plus tard : plus rien de nouveau
-        assert!(select_new(&mut seen, &feed, "série 1080p", "", true).is_empty());
+        assert!(select_new(&mut seen, &feed, &words("série 1080p"), true).is_empty());
     }
 
     #[test]
     fn same_episode_in_two_qualities_is_taken_once() {
         let mut seen = FeedSeen { initialized: true, ..Default::default() };
         let feed = vec![item("b", "Série S02E05 720p"), item("a", "Série S02E05 1080p")];
-        let chosen = select_new(&mut seen, &feed, "série", "", true);
+        let chosen = select_new(&mut seen, &feed, &words("série"), true);
         assert_eq!(chosen.len(), 1);
         assert_eq!(chosen[0].1.as_deref(), Some("série s02e05"));
         // doublons autorisés si l'option est coupée
         let mut seen = FeedSeen { initialized: true, ..Default::default() };
-        assert_eq!(select_new(&mut seen, &feed, "série", "", false).len(), 2);
+        assert_eq!(select_new(&mut seen, &feed, &words("série"), false).len(), 2);
     }
 
     #[test]

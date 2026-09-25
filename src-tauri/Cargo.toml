@@ -50,6 +50,8 @@ librqbit-tracker-comms = "9.0.1"
 librqbit-core = { version = "9.0.1", default-features = false }
 # flux RSS (lecteur XML sans chargement externe), même version que celle de Tauri
 quick-xml = "0.42"
+# filtres RSS en expression régulière (temps linéaire garanti, pas de retour arrière)
+regex = "1"
 webpki-root-certs = "1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

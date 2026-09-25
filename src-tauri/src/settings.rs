@@ -335,6 +335,8 @@ pub struct RssFeed {
     pub enabled: bool,
     /// Ne pas reprendre un épisode déjà ajouté (S02E05) dans une autre qualité.
     pub skip_repeats: bool,
+    /// `include` et `exclude` sont des expressions régulières (voir `rss::Filter`).
+    pub regex: bool,
 }
 
 /// Envoi des fichiers terminés sur storage.to (voir storage_to.rs).
@@ -519,6 +521,9 @@ impl Settings {
             }
             if feed.include.chars().count() > 300 || feed.exclude.chars().count() > 300 {
                 return Err(format!("Flux RSS « {} » : filtres de 300 caractères au plus.", feed.name));
+            }
+            if let Err(err) = crate::rss::Filter::new(&feed.include, &feed.exclude, feed.regex) {
+                return Err(format!("Flux RSS « {} » : {err}.", feed.name));
             }
             if feed.id.is_empty() {
                 feed.id = uuid::Uuid::new_v4().simple().to_string()[..12].to_owned();
