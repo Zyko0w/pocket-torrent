@@ -51,6 +51,11 @@
   (BEP 40), identifiants DHT sécurisés (BEP 42), perçage de NAT (BEP 55).
 - Ouverture automatique du port sur le routeur (UPnP, NAT-PMP).
 
+## Correctif de la 0.4.3
+
+- Fenêtre d'envoi sur storage.to : les listes (durée de vie, nombre de téléchargements) s'ouvraient
+  derrière la fenêtre et ne pouvaient pas être utilisées.
+
 ## Nouveautés de la 0.4.2
 
 - Envoi sur storage.to à la demande : menu ⋯ d'un téléchargement terminé, avec durée de vie du lien,
