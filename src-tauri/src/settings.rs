@@ -854,7 +854,8 @@ mod normalize_tests {
     /// Chaque valeur hors limites est refusée avec un message, sans rien enregistrer.
     #[test]
     fn every_invalid_value_is_refused() {
-        let cases: Vec<(&str, Box<dyn Fn(&mut Settings)>)> = vec![
+        type Change = Box<dyn Fn(&mut Settings)>;
+        let cases: Vec<(&str, Change)> = vec![
             ("dossier relatif", Box::new(|s| s.download_dir = "Films".into())),
             ("dossier vide", Box::new(|s| s.download_dir = PathBuf::new())),
             ("catégorie sans nom", Box::new(|s| s.categories = vec![category("  ", r"C:\A")])),
