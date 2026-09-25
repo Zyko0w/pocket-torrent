@@ -159,7 +159,9 @@ export function Select ({ value, options, onChange, id, ariaLabel, title, disabl
             </li>
           ))}
         </ul>,
-        document.body
+        // dans une boîte de dialogue : la liste doit y être placée, sinon elle passe dessous et
+        // reste inaccessible (tout le reste de la page est inerte pendant une boîte modale)
+        button.current?.closest('dialog') ?? document.body
       )}
     </>
   )

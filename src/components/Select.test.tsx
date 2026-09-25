@@ -55,4 +55,14 @@ describe('Select', () => {
     fireEvent.pointerDown(document.body)
     expect(screen.queryByRole('listbox')).toBeNull()
   })
+
+  it('dans une boîte de dialogue, la liste s’ouvre dedans (sinon elle passe dessous)', () => {
+    render(
+      <dialog open>
+        <Select ariaLabel='Durée' value='1' options={[{ value: '1', label: '1 jour' }]} onChange={vi.fn()} />
+      </dialog>
+    )
+    fireEvent.click(screen.getByRole('combobox', { name: 'Durée' }))
+    expect(screen.getByRole('listbox').closest('dialog')).toBeTruthy()
+  })
 })
