@@ -74,12 +74,62 @@ pub(crate) async fn read_metainfo_from_peer(
     }
 }
 
+/// Pocket Torrent : mémoire réservée par toutes les lectures de métadonnées en cours, tous pairs
+/// et tous magnets confondus. Chaque pair annonce la taille des métadonnées (jusqu'à 32 Mio) et
+/// le tampon était réservé aussitôt, pour 128 pairs à la fois : un attaquant annoncé sur la DHT
+/// avec de nombreux ports faisait réserver 4 Gio d'un coup. Au-delà du budget, le pair est ignoré.
+const METADATA_MEMORY_BUDGET: usize = 256 * 1024 * 1024;
+static METADATA_MEMORY_USED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+struct MetadataBudget {
+    counter: &'static std::sync::atomic::AtomicUsize,
+    bytes: usize,
+}
+
+impl Default for MetadataBudget {
+    fn default() -> Self {
+        Self {
+            counter: &METADATA_MEMORY_USED,
+            bytes: 0,
+        }
+    }
+}
+
+impl MetadataBudget {
+    fn reserve(bytes: usize) -> anyhow::Result<Self> {
+        Self::reserve_in(&METADATA_MEMORY_USED, bytes)
+    }
+
+    fn reserve_in(
+        counter: &'static std::sync::atomic::AtomicUsize,
+        bytes: usize,
+    ) -> anyhow::Result<Self> {
+        use std::sync::atomic::Ordering;
+        counter
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
+                used.checked_add(bytes)
+                    .filter(|total| *total <= METADATA_MEMORY_BUDGET)
+            })
+            .map_err(|_| anyhow::anyhow!("too much metadata being read at once"))?;
+        Ok(Self { counter, bytes })
+    }
+}
+
+impl Drop for MetadataBudget {
+    fn drop(&mut self) {
+        self.counter
+            .fetch_sub(self.bytes, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 #[derive(Default)]
 struct HandlerLocked {
     metadata_size: u32,
     total_pieces: usize,
     buffer: Vec<u8>,
     received_pieces: Vec<bool>,
+    _budget: MetadataBudget,
 }
 
 impl HandlerLocked {
@@ -87,6 +137,10 @@ impl HandlerLocked {
         if metadata_size > 32 * 1024 * 1024 {
             anyhow::bail!("metadata size {} is too big", metadata_size);
         }
+        if metadata_size == 0 {
+            anyhow::bail!("empty metadata");
+        }
+        let budget = MetadataBudget::reserve(metadata_size as usize)?;
         let buffer = vec![0u8; metadata_size as usize];
         let total_pieces: usize = (metadata_size as u64)
             .div_ceil(CHUNK_SIZE as u64)
@@ -97,6 +151,7 @@ impl HandlerLocked {
             received_pieces,
             buffer,
             total_pieces,
+            _budget: budget,
         })
     }
     fn piece_size(&self, index: u32) -> usize {
@@ -260,5 +315,27 @@ impl PeerConnectionHandler for Handler {
 
     fn client_name_and_version(&self) -> &str {
         &self.client_name_and_version
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn metadata_memory_is_bounded_across_peers() {
+        // compteur propre au test (le vrai est partagé avec les autres tests qui tournent en même
+        // temps) : 128 pairs qui annoncent 32 Mio chacun, seuls 8 passent (256 Mio), et la place
+        // revient quand une lecture se termine
+        static USED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        const SIZE: usize = 32 * 1024 * 1024;
+        let mut held: Vec<MetadataBudget> = (0..128)
+            .filter_map(|_| MetadataBudget::reserve_in(&USED, SIZE).ok())
+            .collect();
+        assert_eq!(held.len(), 8);
+        held.pop();
+        assert!(MetadataBudget::reserve_in(&USED, SIZE).is_ok());
+        assert!(HandlerLocked::new(0).is_err());
+        assert!(HandlerLocked::new(33 * 1024 * 1024).is_err());
     }
 }
