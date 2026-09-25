@@ -31,8 +31,16 @@ pub struct TrackerStatus {
     /// Dernière annonce réussie, et nombre de pairs qu'elle a renvoyés.
     pub last_success: Option<SystemTime>,
     pub last_peers: usize,
+    /// Sources complètes et clients (seeders / leechers) selon le tracker, s'il les donne.
+    pub swarm: Option<Swarm>,
     pub error: Option<String>,
     pub next_announce: Option<SystemTime>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Swarm {
+    pub seeders: u64,
+    pub leechers: u64,
 }
 
 type Registry = HashMap<Id20, HashMap<String, (u64, TrackerStatus)>>;
@@ -93,11 +101,12 @@ impl StatusOwner {
         });
     }
 
-    pub(crate) fn success(&self, url: &str, peers: usize, next_in: Duration) {
+    pub(crate) fn success(&self, url: &str, peers: usize, swarm: Option<Swarm>, next_in: Duration) {
         self.update(url, |s| {
             s.state = TrackerState::Working;
             s.last_success = Some(SystemTime::now());
             s.last_peers = peers;
+            s.swarm = swarm;
             s.error = None;
             s.next_announce = Some(SystemTime::now() + next_in);
         });
@@ -133,12 +142,13 @@ mod tests {
     fn entries_follow_their_owner() {
         let hash = Id20::new([7; 20]);
         let first = StatusOwner::new(hash);
-        first.success("udp://a", 12, Duration::from_secs(60));
+        first.success("udp://a", 12, Some(Swarm { seeders: 3, leechers: 9 }), Duration::from_secs(60));
         first.failure("udp://b", "timeout", None);
         let list = tracker_statuses(&hash);
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].state, TrackerState::Working);
         assert_eq!(list[0].last_peers, 12);
+        assert_eq!(list[0].swarm, Some(Swarm { seeders: 3, leechers: 9 }));
         assert_eq!(list[1].error.as_deref(), Some("timeout"));
 
         // un second flux reprend « a » : l'abandon du premier ne retire que « b »

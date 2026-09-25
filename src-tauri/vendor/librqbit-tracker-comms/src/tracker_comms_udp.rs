@@ -103,9 +103,7 @@ impl Request {
 #[derive(Debug)]
 pub struct AnnounceResponse {
     pub interval: u32,
-    #[allow(dead_code)]
     pub leechers: u32,
-    #[allow(dead_code)]
     pub seeders: u32,
     pub addrs: Vec<SocketAddr>,
 }

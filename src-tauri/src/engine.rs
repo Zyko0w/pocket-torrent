@@ -122,6 +122,9 @@ pub struct TrackerView {
     pub state: &'static str,
     /// Pairs renvoyés par la dernière annonce réussie.
     pub peers: usize,
+    /// Sources complètes et clients de l'essaim selon le tracker (s'il les donne).
+    pub seeders: Option<u64>,
+    pub leechers: Option<u64>,
     pub error: Option<String>,
     /// Dernière annonce réussie et prochaine annonce prévue, en ms depuis 1970.
     pub last_success_at: Option<u64>,
@@ -730,6 +733,8 @@ impl Engine {
                     TrackerState::Skipped => "skipped",
                 },
                 peers: status.last_peers,
+                seeders: status.swarm.map(|s| s.seeders),
+                leechers: status.swarm.map(|s| s.leechers),
                 error: status.error,
                 last_success_at: status.last_success.and_then(epoch_ms),
                 next_announce_at: status.next_announce.and_then(epoch_ms),
@@ -746,6 +751,8 @@ impl Engine {
                     url,
                     state: "idle",
                     peers: 0,
+                    seeders: None,
+                    leechers: None,
                     error: None,
                     last_success_at: None,
                     next_announce_at: None,

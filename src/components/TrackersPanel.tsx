@@ -17,6 +17,9 @@ const STATES: Record<Tracker['state'], { dot: string; label: string }> = {
 function details (tracker: Tracker, now: number): string {
   const parts: string[] = []
   if (tracker.state === 'working') parts.push(`${plural(tracker.peers, 'pair')} à la dernière annonce`)
+  if (tracker.state === 'working' && tracker.seeders != null && tracker.leechers != null) {
+    parts.push(`${plural(tracker.seeders, 'source')}, ${plural(tracker.leechers, 'client')}`)
+  }
   if (tracker.state === 'idle') parts.push('torrent arrêté : aucune annonce')
   if (tracker.error) parts.push(tracker.error)
   if (tracker.state === 'failing' && tracker.lastSuccessAt) parts.push(`dernier succès il y a ${formatEta((now - tracker.lastSuccessAt) / 1000)}`)

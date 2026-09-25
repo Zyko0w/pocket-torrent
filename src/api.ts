@@ -159,6 +159,9 @@ export interface Tracker {
   /** idle : torrent arrêté, pas d'annonce · skipped : jamais contacté (voir `error`) */
   state: 'idle' | 'connecting' | 'working' | 'failing' | 'skipped'
   peers: number
+  /** Sources complètes et clients de l'essaim selon le tracker (null s'il ne les donne pas). */
+  seeders: number | null
+  leechers: number | null
   error: string | null
   lastSuccessAt: number | null
   nextAnnounceAt: number | null

@@ -93,6 +93,10 @@ impl TorrentStatsProvider for () {
 
 type Sender = tokio::sync::mpsc::Sender<SocketAddr>;
 
+/// Taille maximale d'une réponse de tracker HTTP (quelques Kio en pratique, même avec des
+/// centaines de pairs).
+const MAX_HTTP_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+
 enum SupportedTracker {
     Udp(Url),
     Http(Url),
@@ -328,11 +332,19 @@ impl TrackerComms {
         }
         url.set_query(Some(&queries));
 
-        let response: reqwest::Response = self.reqwest_client.get(url).send().await?;
+        let mut response: reqwest::Response = self.reqwest_client.get(url).send().await?;
         if !response.status().is_success() {
             anyhow::bail!("tracker responded with {:?}", response.status());
         }
-        let bytes = response.bytes().await?;
+        // Pocket Torrent : réponse lue par morceaux et plafonnée ; `bytes()` lisait tout en
+        // mémoire, un tracker hostile pouvait envoyer un flux sans fin et arrêter l'application.
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if bytes.len() + chunk.len() > MAX_HTTP_RESPONSE_BYTES {
+                bail!("tracker response too large");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         if let Ok((error, _)) =
             bencode::from_bytes_with_rest::<tracker_comms_http::TrackerError>(&bytes)
         {
@@ -354,9 +366,14 @@ impl TrackerComms {
             peers += 1;
         }
         let interval = Duration::from_secs(response.min_interval.unwrap_or(response.interval));
+        let swarm = match (response.complete, response.incomplete) {
+            (Some(seeders), Some(leechers)) => Some(crate::status::Swarm { seeders, leechers }),
+            _ => None,
+        };
         self.status.success(
             tracker_url.as_str(),
             peers,
+            swarm,
             self.force_tracker_interval.unwrap_or(interval),
         );
         Ok(interval)
@@ -413,8 +430,8 @@ impl TrackerComms {
                         .instrument(trace_span!("udp request", ?addr))
                         .await
                     {
-                        Ok((sleep, peers)) => {
-                            self.status.success(url.as_str(), peers, sleep);
+                        Ok((sleep, peers, swarm)) => {
+                            self.status.success(url.as_str(), peers, Some(swarm), sleep);
                             sleep_interval = Some(sleep)
                         }
                         Err(err) => {
@@ -432,6 +449,14 @@ impl TrackerComms {
                             .instrument(trace_span!("udp request", addr=?v6))
                     );
                     let peers = r4.as_ref().map_or(0, |r| r.1) + r6.as_ref().map_or(0, |r| r.1);
+                    // même essaim vu en IPv4 et en IPv6 : le plus grand des deux comptes
+                    let swarm = [&r4, &r6]
+                        .into_iter()
+                        .filter_map(|r| r.as_ref().ok().map(|r| r.2))
+                        .reduce(|a, b| crate::status::Swarm {
+                            seeders: a.seeders.max(b.seeders),
+                            leechers: a.leechers.max(b.leechers),
+                        });
                     let error = match (&r4, &r6) {
                         (Err(e), Err(_)) => Some(format!("{e:#}")),
                         _ => None,
@@ -446,7 +471,7 @@ impl TrackerComms {
                     let next = sleep_interval.unwrap_or(Duration::from_secs(60));
                     match error {
                         Some(error) => self.status.failure(url.as_str(), &error, Some(next)),
-                        None => self.status.success(url.as_str(), peers, next),
+                        None => self.status.success(url.as_str(), peers, swarm, next),
                     }
                 }
             }
@@ -457,7 +482,7 @@ impl TrackerComms {
         &self,
         addr: SocketAddr,
         client: &UdpTrackerClient,
-    ) -> anyhow::Result<(Duration, usize)> {
+    ) -> anyhow::Result<(Duration, usize, crate::status::Swarm)> {
         use tracker_comms_udp::*;
 
         let stats = self.stats.get();
@@ -492,12 +517,79 @@ impl TrackerComms {
                 }
                 let sleep = response.interval.max(5);
                 let sleep = Duration::from_secs(sleep as u64);
-                Ok((sleep, peers))
+                let swarm = crate::status::Swarm {
+                    seeders: response.seeders.into(),
+                    leechers: response.leechers.into(),
+                };
+                Ok((sleep, peers, swarm))
             }
             Err(e) => {
                 debug!(?addr, "error reading announce response: {e:#}");
                 Err(e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Faux tracker HTTP en bac à sable (127.0.0.1) : répond `body` en boucle `repeat` fois.
+    async fn fake_tracker(body: &'static [u8], repeat: usize) -> Url {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut request = [0u8; 4096];
+                    let _ = socket.read(&mut request).await;
+                    let _ = socket.write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n").await;
+                    for _ in 0..repeat {
+                        if socket.write_all(body).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        Url::parse(&format!("http://{addr}/announce")).unwrap()
+    }
+
+    fn comms(info_hash: Id20) -> (TrackerComms, tokio::sync::mpsc::Receiver<SocketAddr>) {
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let comms = TrackerComms {
+            info_hash,
+            peer_id: Id20::new([2; 20]),
+            stats: Box::new(()),
+            force_tracker_interval: None,
+            tx,
+            announce_port: Arc::new(std::sync::atomic::AtomicU16::new(6881)),
+            reqwest_client: reqwest::Client::new(),
+            key: 0,
+            status: crate::status::StatusOwner::new(info_hash),
+        };
+        (comms, rx)
+    }
+
+    #[tokio::test]
+    async fn http_announce_reports_the_swarm() {
+        let url = fake_tracker(b"d8:completei40e10:incompletei3e8:intervali1800e5:peers6:\x7f\x00\x00\x01\x1a\xe1e", 1).await;
+        let hash = Id20::new([3; 20]);
+        let (comms, mut rx) = comms(hash);
+        comms.tracker_one_request_http(&url, None).await.unwrap();
+        assert_eq!(rx.recv().await.unwrap(), "127.0.0.1:6881".parse().unwrap());
+        let status = crate::status::tracker_statuses(&hash);
+        assert_eq!(status[0].swarm, Some(crate::status::Swarm { seeders: 40, leechers: 3 }));
+    }
+
+    #[tokio::test]
+    async fn endless_http_answer_is_cut_instead_of_filling_memory() {
+        // 64 Mio envoyés (au-delà du plafond de 4 Mio) : la réponse est abandonnée
+        let url = fake_tracker(&[b'x'; 64 * 1024], 1024).await;
+        let (comms, _rx) = comms(Id20::new([4; 20]));
+        let err = comms.tracker_one_request_http(&url, None).await.unwrap_err();
+        assert!(format!("{err:#}").contains("too large"), "{err:#}");
     }
 }
