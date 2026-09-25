@@ -61,7 +61,13 @@ export interface Job {
   /** Recherche des infos d'un magnet : secondes écoulées et pairs trouvés (sinon `null`). */
   searchSecs: number | null
   peersFound: number | null
+  /** Analyse Microsoft Defender du téléchargement terminé (option des réglages). */
+  scan: Scan | null
 }
+
+export type Scan =
+  | { state: 'running' | 'clean' | 'unavailable' }
+  | { state: 'threat', threats: string[] }
 
 export type GameModeSwitch = 'auto' | 'on' | 'off'
 export type GameAction = 'limit' | 'pause'
@@ -280,6 +286,7 @@ export const api = {
   testNotification: () => invoke<void>('test_notification'),
   /** Renvoie une phrase sur l'état du compte ou le quota restant. */
   testStorageTo: () => invoke<string>('test_storage_to'),
+  testDefender: () => invoke<string>('test_defender'),
   performanceSnapshot: () => invoke<PerfSnapshot>('performance_snapshot'),
   exportPerformanceSnapshot: (path: string) => invoke<void>('export_performance_snapshot', { path }),
   readLog: (maxLines: number) => invoke<string>('read_log', { maxLines }),

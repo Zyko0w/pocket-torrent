@@ -136,6 +136,7 @@ pub fn run() {
             commands::save_settings,
             commands::test_notification,
             commands::test_storage_to,
+            commands::test_defender,
             commands::network_adapters,
             commands::check_public_ip,
             commands::tunnel_view,

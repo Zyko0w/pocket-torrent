@@ -43,6 +43,25 @@ pub fn available() -> bool {
     mpcmdrun_path().is_some()
 }
 
+/// Bouton « Tester » des réglages : analyse un petit fichier sans danger (dossier temporaire
+/// dédié, effacé ensuite) et renvoie la durée. Bloquant, comme `scan`.
+pub fn self_test() -> anyhow::Result<std::time::Duration> {
+    let dir = std::env::temp_dir().join(format!("pocket-torrent-defender-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let file = dir.join("test.txt");
+    std::fs::write(&file, "Pocket Torrent : fichier de test sans danger")?;
+    let started = std::time::Instant::now();
+    let result = scan(&file);
+    let _ = std::fs::remove_dir_all(&dir);
+    match result {
+        ScanResult::Clean => Ok(started.elapsed()),
+        ScanResult::ThreatFound(threats) => anyhow::bail!("résultat inattendu : {}", threats.join(", ")),
+        ScanResult::Unavailable => anyhow::bail!(
+            "Microsoft Defender ne répond pas : il est peut-être désactivé ou remplacé par un autre antivirus."
+        ),
+    }
+}
+
 /// Lance une analyse sur `path` (fichier ou dossier). Bloquant (appel de processus) : à lancer
 /// hors du fil principal (`spawn_blocking`).
 pub fn scan(path: &Path) -> ScanResult {
@@ -64,4 +83,17 @@ pub fn scan(path: &Path) -> ScanResult {
         return ScanResult::ThreatFound(threats);
     }
     if output.status.success() { ScanResult::Clean } else { ScanResult::Unavailable }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Sur un PC avec Microsoft Defender actif : `cargo test --lib -- --ignored defender`.
+    /// (Ignoré par défaut : la machine de la CI n'a pas forcément Defender en service.)
+    #[test]
+    #[ignore]
+    fn defender_answers_on_this_pc() {
+        assert!(super::available(), "MpCmdRun.exe introuvable");
+        let took = super::self_test().unwrap();
+        assert!(took.as_secs() < 60, "{took:?}");
+    }
 }

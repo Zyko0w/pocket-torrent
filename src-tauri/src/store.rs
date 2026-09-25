@@ -158,6 +158,23 @@ pub struct Common {
     pub error: Option<String>,
     pub error_notified: bool,
     pub delivery: Option<Delivery>,
+    /// Analyse Microsoft Defender du téléchargement terminé (option des réglages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scan: Option<Scan>,
+}
+
+/// Résultat de l'analyse Microsoft Defender d'un téléchargement terminé, affiché sous celui-ci.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
+pub enum Scan {
+    /// En cours (jamais conservé d'un lancement à l'autre).
+    Running,
+    Clean,
+    Threat {
+        threats: Vec<String>,
+    },
+    /// Defender absent, désactivé ou remplacé par un autre antivirus.
+    Unavailable,
 }
 
 impl Common {
@@ -378,5 +395,23 @@ mod write_tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"{\"a\":2}");
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "aucun fichier temporaire laissé");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::Scan;
+
+    /// Forme lue par l'interface (`src/api.ts`, type `Scan`).
+    #[test]
+    fn scan_results_have_the_shape_the_interface_reads() {
+        let json = |scan: &Scan| serde_json::to_string(scan).unwrap();
+        assert_eq!(json(&Scan::Running), r#"{"state":"running"}"#);
+        assert_eq!(json(&Scan::Clean), r#"{"state":"clean"}"#);
+        assert_eq!(json(&Scan::Unavailable), r#"{"state":"unavailable"}"#);
+        assert_eq!(
+            json(&Scan::Threat { threats: vec!["Virus:X".into()] }),
+            r#"{"state":"threat","threats":["Virus:X"]}"#
+        );
     }
 }

@@ -35,6 +35,18 @@ describe('JobRow', () => {
     expect(screen.getByText(/aucun pair pour l’instant/)).toBeTruthy()
   })
 
+  it('affiche le résultat de l’analyse Microsoft Defender', () => {
+    const done = { status: 'done' as const, progressBytes: 1000, finishedAt: 1 }
+    renderRow(makeJob({ ...done, scan: { state: 'running' } }))
+    expect(screen.getByText(/Analyse Microsoft Defender en cours/)).toBeTruthy()
+    renderRow(makeJob({ ...done, id: 't:b', scan: { state: 'clean' } }))
+    expect(screen.getByText(/aucune menace/)).toBeTruthy()
+    renderRow(makeJob({ ...done, id: 't:c', scan: { state: 'threat', threats: ['Virus:DOS/EICAR_Test_File'] } }))
+    expect(screen.getByText(/a détecté : Virus:DOS\/EICAR_Test_File/)).toBeTruthy()
+    renderRow(makeJob({ ...done, id: 't:d', scan: { state: 'unavailable' } }))
+    expect(screen.getByText(/Analyse Microsoft Defender impossible/)).toBeTruthy()
+  })
+
   it('le menu explique l’effet de la priorité (file et débit)', () => {
     renderRow()
     fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))

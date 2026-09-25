@@ -32,6 +32,7 @@ export function makeJob (overrides: Partial<Job> = {}): Job {
     sourceFile: null,
     searchSecs: null,
     peersFound: null,
+    scan: null,
     ...overrides
   }
 }

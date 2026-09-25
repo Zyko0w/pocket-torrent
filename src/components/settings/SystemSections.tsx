@@ -36,6 +36,18 @@ interface WindowsSectionProps extends SectionProps {
 
 export function WindowsSection (props: WindowsSectionProps) {
   const { settings, update } = props
+  const toast = useToast()
+  const [testingDefender, setTestingDefender] = useState(false)
+  const testDefender = async () => {
+    setTestingDefender(true)
+    try {
+      toast(await api.testDefender())
+    } catch (err) {
+      toast(errorMessage(err))
+    } finally {
+      setTestingDefender(false)
+    }
+  }
   return (
     <Section id='s-windows' reset={resetOf(props, ['closeToTray', 'offerClipboardMagnets', 'preventSleep', 'scanDownloads', 'checkUpdates'])} title='Windows' intro='Démarrage, liens magnet, fichiers .torrent et fermeture.'>
       <Check checked={props.startWithWindows} onChange={props.onStartWithWindowsChange} label='Lancer Pocket Torrent avec Windows' help='Il démarre discrètement, en arrière-plan : son icône apparaît dans la zone de notification, en bas à droite de la barre des tâches.' />
@@ -58,10 +70,17 @@ export function WindowsSection (props: WindowsSectionProps) {
         label='Analyser chaque téléchargement terminé avec Microsoft Defender'
         help={
           props.defenderAvailable
-            ? 'Rapport seulement : rien n’est mis en quarantaine ni supprimé automatiquement, une notification s’affiche en cas de menace.'
+            ? 'Rapport seulement : rien n’est mis en quarantaine ni supprimé automatiquement. Le résultat s’affiche sous chaque téléchargement terminé, avec une notification en cas de menace.'
             : 'Microsoft Defender introuvable sur ce PC : cette option n’aura aucun effet.'
         }
       />
+      {props.defenderAvailable && (
+        <div>
+          <button type='button' className='btn btn-ghost btn-sm' disabled={testingDefender} onClick={testDefender}>
+            {testingDefender && <SpinnerGap size={14} className='spin' />} Tester Microsoft Defender
+          </button>
+        </div>
+      )}
       <Check
         checked={settings.checkUpdates}
         onChange={(checkUpdates) => update({ checkUpdates })}

@@ -21,8 +21,8 @@ use crate::secrets::{self, Secret};
 use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};
 use crate::storage_to::StorageTo;
 use crate::store::{
-    Common, Delivery, DeliveryState, Dest, DirectEntry, Hold, Link, PendingTorrent, Priority, StoreData, TorrentEntry,
-    now_ms,
+    Common, Delivery, DeliveryState, Dest, DirectEntry, Hold, Link, PendingTorrent, Priority, Scan, StoreData,
+    TorrentEntry, now_ms,
 };
 use crate::system::{self, ProcessWatcher};
 use crate::{dns, netif};
@@ -99,6 +99,8 @@ pub struct JobView {
     /// Recherche des infos d'un magnet : secondes écoulées et pairs trouvés jusqu'ici.
     pub search_secs: Option<u64>,
     pub peers_found: Option<usize>,
+    /// Analyse Microsoft Defender du téléchargement terminé.
+    pub scan: Option<Scan>,
 }
 
 #[derive(Serialize)]
@@ -391,7 +393,14 @@ impl Manager {
         };
         let engine = Arc::new(Engine::start(&settings, &data_dir, binding, &network).await?);
         let store_path = data_dir.join("jobs.json");
-        let data = StoreData::load(&store_path);
+        let mut data = StoreData::load(&store_path);
+        // analyse interrompue par la fermeture de l'appli : pas de résultat
+        let StoreData { torrents, directs, .. } = &mut data;
+        for common in torrents.values_mut().map(|t| &mut t.common).chain(directs.iter_mut().map(|d| &mut d.common)) {
+            if common.scan == Some(Scan::Running) {
+                common.scan = None;
+            }
+        }
         remove_old_files(&data_dir.join(add::DROPPED_DIR), Duration::from_secs(7 * 24 * 3600));
 
         let manager = Arc::new(Self {

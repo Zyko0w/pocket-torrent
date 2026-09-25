@@ -160,7 +160,7 @@ impl Manager {
             self.move_to_final_folder(hash, !seed).await;
         }
         if let Ok(path) = self.engine.content_path(hash) {
-            self.maybe_scan(name.clone(), path);
+            self.maybe_scan(JobKey::Torrent(hash.to_owned()), name.clone(), path);
         }
         if dest == Dest::StorageTo || !seed {
             let _ = self.engine.pause(hash).await;
@@ -218,19 +218,52 @@ impl Manager {
     /// Analyse un téléchargement terminé avec Microsoft Defender si activé (§10.4). Ne
     /// retarde jamais le flux normal : lancée en tâche de fond, ne fait que notifier en cas
     /// de menace (rapport seulement, rien n'est supprimé automatiquement).
-    pub(super) fn maybe_scan(self: &Arc<Self>, name: String, path: PathBuf) {
+    /// Analyse Microsoft Defender d'un téléchargement terminé (option des réglages). Le résultat
+    /// est gardé avec le téléchargement, affiché sous celui-ci et écrit dans le journal.
+    pub(super) fn maybe_scan(self: &Arc<Self>, key: JobKey, name: String, path: PathBuf) {
         if !self.settings.read().scan_downloads {
             return;
         }
+        self.set_scan(&key, Scan::Running);
         let manager = self.clone();
         tauri::async_runtime::spawn(async move {
-            let Ok(result) = tauri::async_runtime::spawn_blocking(move || crate::antivirus::scan(&path)).await else {
-                return;
+            use crate::antivirus::ScanResult;
+            let result = tauri::async_runtime::spawn_blocking(move || crate::antivirus::scan(&path))
+                .await
+                .unwrap_or(ScanResult::Unavailable);
+            let scan = match result {
+                ScanResult::Clean => {
+                    tracing::info!("Microsoft Defender : aucune menace dans {name}");
+                    Scan::Clean
+                }
+                ScanResult::ThreatFound(threats) => {
+                    tracing::warn!("Microsoft Defender : menace dans {name} : {}", threats.join(", "));
+                    manager.notify(Notify::Error, "Menace détectée", &format!("{name} : {}", threats.join(", ")));
+                    Scan::Threat { threats }
+                }
+                ScanResult::Unavailable => {
+                    tracing::warn!(
+                        "analyse Microsoft Defender impossible pour {name} (désactivé ou autre antivirus ?)"
+                    );
+                    Scan::Unavailable
+                }
             };
-            if let crate::antivirus::ScanResult::ThreatFound(threats) = result {
-                manager.notify(Notify::Error, "Menace détectée", &format!("{name} : {}", threats.join(", ")));
-            }
+            manager.set_scan(&key, scan);
+            manager.save_now();
         });
+    }
+
+    fn set_scan(&self, key: &JobKey, scan: Scan) {
+        let mut data = self.data.lock();
+        let common = match key {
+            JobKey::Torrent(hash) => data.torrents.get_mut(hash).map(|e| &mut e.common),
+            JobKey::Direct(id) => data.direct_mut(id).map(|e| &mut e.common),
+            JobKey::Pending(_) => None,
+        };
+        if let Some(common) = common {
+            common.scan = Some(scan);
+        }
+        self.mark_dirty();
     }
 
     /// Met à jour vitesse et progression des téléchargements directs.

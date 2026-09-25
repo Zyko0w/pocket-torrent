@@ -92,6 +92,7 @@ fn base_job(id: String, kind: &'static str, common: &Common) -> JobView {
         source_file: None,
         search_secs: None,
         peers_found: None,
+        scan: common.scan.clone(),
     }
 }
 

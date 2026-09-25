@@ -2,7 +2,7 @@ import { memo, useState, type ReactNode } from 'react'
 import {
   ArrowClockwise, ArrowDown, Broadcast, ChartLine, CaretDown, CheckCircle, Clock, CloudArrowUp, Copy, FolderOpen, Gauge,
   GameController, HardDrives, Lightning, LinkSimple, ListChecks, MagnetStraight, MagnifyingGlass, Pause, Play,
-  ShareNetwork, ShieldWarning, SpinnerGap, SquaresFour, Trash, Users, WarningCircle, X
+  ShareNetwork, ShieldCheck, ShieldWarning, SpinnerGap, SquaresFour, Trash, Users, WarningCircle, X
 } from '@phosphor-icons/react'
 import { api, copyText, errorMessage, type Job, type Priority } from '../api'
 import { PRIORITY_LABELS, formatDate, formatEta, formatRatio, formatSize, formatSpeed, percent, plural } from '../format'
@@ -114,6 +114,30 @@ interface JobRowProps {
   categoryName: string | null
   onDelete: (job: Job) => void
   onChanged: () => void
+}
+
+/** Résultat de l'analyse Microsoft Defender, sous un téléchargement terminé. */
+function ScanLine ({ job }: { job: Job }) {
+  const scan = job.scan
+  if (!scan) return null
+  switch (scan.state) {
+    case 'running':
+      return <p className='job-note'><SpinnerGap size={14} className='spin' /> Analyse Microsoft Defender en cours…</p>
+    case 'clean':
+      return <p className='job-note'><ShieldCheck size={14} className='tone-success' /> Analysé par Microsoft Defender : aucune menace</p>
+    case 'threat':
+      return (
+        <p className='job-alert tone-danger selectable'>
+          <ShieldWarning size={16} /> Microsoft Defender a détecté : {scan.threats.join(', ')}. Le fichier n’a pas été supprimé : ne l’ouvre pas.
+        </p>
+      )
+    case 'unavailable':
+      return (
+        <p className='job-alert tone-warning'>
+          <ShieldWarning size={16} /> Analyse Microsoft Defender impossible (désactivé, ou remplacé par un autre antivirus).
+        </p>
+      )
+  }
 }
 
 export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onChanged }: JobRowProps) {
@@ -270,6 +294,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
 
       {job.error && <p className='job-alert tone-danger selectable'><WarningCircle size={16} /> {job.error}</p>}
       {job.warning && !job.error && <p className='job-alert tone-warning'><HardDrives size={16} /> {job.warning}</p>}
+      <ScanLine job={job} />
 
       {limitOpen && (
         <form

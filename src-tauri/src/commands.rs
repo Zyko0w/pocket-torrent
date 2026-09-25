@@ -318,6 +318,15 @@ pub async fn check_public_ip(state: State<'_, AppState>) -> CommandResult<crate:
 // ------------------------------------------------------------ tunnel intégré
 
 /// Exécute une opération bloquante (canal nommé, autorisation administrateur) hors du fil principal.
+#[tauri::command]
+pub async fn test_defender() -> CommandResult<String> {
+    blocking(|| {
+        crate::antivirus::self_test()
+            .map(|took| format!("Microsoft Defender répond : fichier de test analysé en {:.1} s.", took.as_secs_f64()))
+    })
+    .await
+}
+
 async fn blocking<T: Send + 'static>(job: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> CommandResult<T> {
     tauri::async_runtime::spawn_blocking(job).await.map_err(|e| e.to_string())?.map_err(message)
 }
