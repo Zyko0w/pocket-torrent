@@ -557,7 +557,7 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 - [ ] Séparation démon et interface, **API REST v2 + WebSocket + OpenAPI** — refusé, refonte d'architecture hors périmètre incrémental.
 - [ ] Configuration TOML versionnée, variables d'environnement, profils — refusé, casserait la promesse de migration du §12 si fait sans precaution.
 - [x] Mode confidentialité renforcée (fait, §9.6). [ ] Proxy sans fuite — pas de proxy manuel dans ce client (§9.4). [ ] Avertissement Tor — non applicable (§9.5).
-- [ ] BEP 42, BEP 55 — refusés (non supporté par librqbit / non testable sans vrai NAT). [x] BEP 53 (sélection de fichiers dans un magnet) — déjà présent nativement dans librqbit.
+- [x] BEP 42 — fait le 25/09 (correctif moteur, voir `vendor/PATCHES.md`). [ ] BEP 55 — voir plus bas. [x] BEP 53 (sélection de fichiers dans un magnet) — déjà présent nativement dans librqbit.
 - [x] RSS (0.2.1, voir §7.3). [ ] Règles regex, webhooks — refusés, hors périmètre incrémental.
 - [ ] Métriques Prometheus, journaux JSON — refusé (journal texte lisible fait à la place, §5) ; image Docker — non applicable, client de bureau.
 - [x] Piece picker : priorité aux pièces déjà entamées, priorité par fichier réglable (§4.1) — faits, avec un vrai gaspillage corrigé au passage. [x] Rarest-first et choking réel (§4.1/§4.2) — faits depuis par correctifs moteur (voir `vendor/PATCHES.md`).

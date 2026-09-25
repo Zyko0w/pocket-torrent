@@ -28,7 +28,8 @@ struct StoredPeer {
 }
 
 pub struct PeerStore {
-    self_id: Id20,
+    /// Pocket Torrent : modifiable (identifiant recalculé d'après le BEP 42).
+    self_id: RwLock<Id20>,
     max_remembered_tokens: u32,
     max_remembered_peers: u32,
     max_distance: Id20,
@@ -60,7 +61,7 @@ impl Serialize for PeerStore {
         }
 
         let mut s = serializer.serialize_struct("PeerStore", 7)?;
-        s.serialize_field("self_id", &self.self_id.as_string())?;
+        s.serialize_field("self_id", &self.self_id.read().as_string())?;
         s.serialize_field("max_remembered_tokens", &self.max_remembered_tokens)?;
         s.serialize_field("max_remembered_peers", &self.max_remembered_peers)?;
         s.serialize_field("max_distance", &self.max_distance.as_string())?;
@@ -90,7 +91,7 @@ impl<'de> Deserialize<'de> for PeerStore {
         }
 
         Tmp::deserialize(deserializer).map(|tmp| Self {
-            self_id: tmp.self_id,
+            self_id: RwLock::new(tmp.self_id),
             max_remembered_tokens: tmp.max_remembered_tokens,
             max_remembered_peers: tmp.max_remembered_peers,
             max_distance: tmp.max_distance,
@@ -102,9 +103,18 @@ impl<'de> Deserialize<'de> for PeerStore {
 }
 
 impl PeerStore {
+    #[cfg(test)]
+    pub(crate) fn self_id_for_tests(&self) -> parking_lot::RwLockReadGuard<'_, Id20> {
+        self.self_id.read()
+    }
+
+    pub(crate) fn set_self_id(&self, id: Id20) {
+        *self.self_id.write() = id;
+    }
+
     pub fn new(self_id: Id20) -> Self {
         Self {
-            self_id,
+            self_id: RwLock::new(self_id),
             max_remembered_tokens: 1000,
             max_remembered_peers: 1000,
             max_distance: Id20::from_str("00000fffffffffffffffffffffffffffffffffff").unwrap(),
@@ -134,7 +144,7 @@ impl PeerStore {
         // If the token doesn't match, don't store it.
         // If we are out of capacity, don't store it.
         // Otherwise, store it.
-        if announce.info_hash.distance(&self.self_id) > self.max_distance {
+        if announce.info_hash.distance(&self.self_id.read()) > self.max_distance {
             trace!("peer store: info_hash too far to store");
             return false;
         }

@@ -96,6 +96,14 @@ jobs:
           --config 'patch.crates-io.librqbit-upnp.path="../librqbit-upnp"'
           --config 'patch.crates-io.librqbit-utp.path="../librqbit-utp"'
 
+      - name: Rust — tests DHT (BEP 42, fuzzing des messages)
+        working-directory: src-tauri/vendor/librqbit-dht
+        run: >-
+          cargo test --lib --target-dir ../../target/dht-tests
+          --config 'patch.crates-io.librqbit-dualstack-sockets.path="../librqbit-dualstack-sockets"'
+          --config 'patch.crates-io.librqbit-core.path="../librqbit-core"'
+          --config 'patch.crates-io.librqbit-bencode.path="../librqbit-bencode"'
+
       - name: Rust — tests UPnP (faux appareil du réseau local)
         working-directory: src-tauri/vendor/librqbit-upnp
         run: cargo test --lib --target-dir ../../target/upnp-tests

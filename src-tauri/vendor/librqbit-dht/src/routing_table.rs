@@ -292,6 +292,23 @@ impl BucketTree {
                 return InsertResult::ReplacedBad(new_node);
             }
 
+            // Pocket Torrent (BEP 42) : compartiment plein, nouveau nœud à l'identifiant conforme :
+            // il prend la place d'un nœud à adresse publique dont l'identifiant ne l'est pas
+            // (choisi par son propriétaire, donc peut-être pour entourer un torrent)
+            if nodes.nodes.len() >= 8
+                && !crate::bep42::is_suspect(&id, addr.ip())
+                && let Some(suspect) = nodes
+                    .nodes
+                    .iter_mut()
+                    .find(|r| crate::bep42::is_suspect(&r.id, r.addr.ip()))
+            {
+                std::mem::swap(suspect, &mut new_node);
+                nodes.nodes.sort_by_key(|n| n.id);
+                debug!("replaced BEP 42 suspect node {:?}", new_node);
+                nodes.last_refreshed = now;
+                return InsertResult::ReplacedBad(new_node);
+            }
+
             // if max size reached, don't bother
             if self.size == self.max_size {
                 trace!(
@@ -522,7 +539,9 @@ impl RoutingTable {
         let res = self.buckets.add_node(&self.id, id, addr);
         let replaced = match &res {
             InsertResult::WasExisting => false,
-            InsertResult::ReplacedBad(..) => true,
+            // Pocket Torrent : un remplacement ne change pas le nombre de nœuds (avant, compté +1 :
+            // la table se croyait pleine trop tôt)
+            InsertResult::ReplacedBad(..) => false,
             InsertResult::Added => true,
             InsertResult::Ignored => false,
         };
@@ -703,5 +722,50 @@ mod tests {
             let id = dbg!(generate_random_id(&start, bits));
             assert!(id >= start && id <= end, "{:?}", id);
         }
+    }
+}
+
+#[cfg(test)]
+mod bep42_tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use librqbit_core::hash_id::Id20;
+
+    use super::{InsertResult, RoutingTable};
+
+    /// Compartiment plein de nœuds à identifiant choisi (adresse publique, identifiant non
+    /// conforme au BEP 42) : un nœud conforme prend la place de l'un d'eux ; un nœud suspect de
+    /// plus est ignoré ; le nombre de nœuds ne bouge pas.
+    #[test]
+    fn compliant_nodes_replace_suspect_ones_in_full_buckets() {
+        let mut table = RoutingTable::new(Id20::new([0; 20]), None);
+        for i in 0..8u8 {
+            let mut id = [0xFF; 20];
+            id[19] = i;
+            let addr = SocketAddr::from((Ipv4Addr::new(8, 8, 8, i), 6881));
+            assert!(matches!(
+                table.add_node(Id20::new(id), addr),
+                InsertResult::Added
+            ));
+        }
+        // adresse dont l'identifiant conforme tombe dans le même compartiment (premier bit à 1)
+        let (ip, id) = (1..=255u8)
+            .map(|i| IpAddr::V4(Ipv4Addr::new(81, 10, 20, i)))
+            .map(|ip| (ip, crate::bep42::node_id(ip, [0x42; 20])))
+            .find(|(_, id)| id.0[0] >= 0x80)
+            .unwrap();
+        assert!(matches!(
+            table.add_node(id, SocketAddr::new(ip, 6881)),
+            InsertResult::ReplacedBad(_)
+        ));
+        assert_eq!(table.len(), 8, "remplacement : pas de nœud en plus");
+        let mut other = [0xFF; 20];
+        other[19] = 99;
+        let suspect = SocketAddr::from((Ipv4Addr::new(9, 9, 9, 9), 6881));
+        assert!(matches!(
+            table.add_node(Id20::new(other), suspect),
+            InsertResult::Ignored
+        ));
+        assert!(table.iter().any(|n| n.id() == id));
     }
 }

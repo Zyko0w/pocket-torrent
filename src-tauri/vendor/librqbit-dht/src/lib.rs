@@ -1,3 +1,4 @@
+mod bep42;
 mod bprotocol;
 mod dht;
 mod error;

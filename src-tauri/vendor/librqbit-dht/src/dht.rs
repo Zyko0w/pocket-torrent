@@ -29,9 +29,7 @@ use futures::{
 use leaky_bucket::RateLimiter;
 use librqbit_core::{
     compact_ip::{CompactSerialize, CompactSerializeFixedLen},
-    crate_version,
     hash_id::Id20,
-    peer_id::generate_azereus_style,
     spawn_utils::{spawn, spawn_with_cancel},
 };
 use librqbit_dualstack_sockets::{BindDevice, UdpSocket};
@@ -571,7 +569,10 @@ impl<C: RecursiveRequestCallbacks> RecursiveRequest<C> {
 }
 
 pub struct DhtState {
-    id: Id20,
+    /// Pocket Torrent : modifiable, recalculé d'après notre adresse publique (BEP 42).
+    id: RwLock<Id20>,
+    /// Pocket Torrent : notre adresse publique d'après les réponses des autres nœuds (BEP 42).
+    external_ip: crate::bep42::ExternalIpVotes,
     /// Port externe obtenu par UPnP (0 = aucun) : annoncé à la place du port d'écoute, que la
     /// box a pu refuser (Pocket Torrent).
     announce_port_override: AtomicU16,
@@ -608,7 +609,8 @@ impl DhtState {
         let routing_table_v4 = routing_table_v4.unwrap_or_else(|| RoutingTable::new(id, None));
         let routing_table_v6 = routing_table_v6.unwrap_or_else(|| RoutingTable::new(id, None));
         Self {
-            id,
+            id: RwLock::new(id),
+            external_ip: Default::default(),
             next_transaction_id: AtomicU16::new(0),
             announce_port_override: AtomicU16::new(0),
             inflight_by_transaction_id: Default::default(),
@@ -620,6 +622,35 @@ impl DhtState {
             peer_store,
             cancellation_token,
         }
+    }
+
+    /// Identifiant de ce nœud.
+    pub fn id(&self) -> Id20 {
+        *self.id.read()
+    }
+
+    /// Pocket Torrent (BEP 42) : notre adresse publique vient d'être établie (ou a changé, autre
+    /// serveur VPN) ; si notre identifiant n'est pas conforme pour elle, il est recalculé et les
+    /// tables de routage reconstruites autour de lui (mêmes nœuds).
+    fn adopt_bep42_id(&self, ip: std::net::IpAddr) {
+        if crate::bep42::is_compliant(&self.id(), ip) {
+            return;
+        }
+        let new_id = crate::bep42::node_id(ip, rand::random());
+        for table in [&self.routing_table_v4, &self.routing_table_v6] {
+            let mut table = table.write();
+            let mut rebuilt = RoutingTable::new(new_id, None);
+            for node in table.iter() {
+                rebuilt.add_node(node.id(), node.addr());
+            }
+            *table = rebuilt;
+        }
+        *self.id.write() = new_id;
+        self.peer_store.set_self_id(new_id);
+        info!(
+            ?new_id,
+            "DHT : identifiant recalculé d'après l'adresse publique (BEP 42)"
+        );
     }
 
     async fn request(&self, request: Request, addr: SocketAddr) -> crate::Result<ResponseOrError> {
@@ -673,7 +704,7 @@ impl DhtState {
                 version: None,
                 ip: None,
                 kind: MessageKind::GetPeersRequest(GetPeersRequest {
-                    id: self.id,
+                    id: self.id(),
                     info_hash,
                     want,
                 }),
@@ -683,7 +714,7 @@ impl DhtState {
                 version: None,
                 ip: None,
                 kind: MessageKind::FindNodeRequest(FindNodeRequest {
-                    id: self.id,
+                    id: self.id(),
                     target,
                     want,
                 }),
@@ -692,7 +723,7 @@ impl DhtState {
                 transaction_id: ByteBufOwned::from(transaction_id_buf.as_ref()),
                 version: None,
                 ip: None,
-                kind: MessageKind::PingRequest(PingRequest { id: self.id }),
+                kind: MessageKind::PingRequest(PingRequest { id: self.id() }),
             },
             Request::Announce {
                 info_hash,
@@ -700,7 +731,7 @@ impl DhtState {
                 port,
             } => Message {
                 kind: MessageKind::AnnouncePeer(AnnouncePeer {
-                    id: self.id,
+                    id: self.id(),
                     implied_port: 0,
                     info_hash,
                     port,
@@ -783,6 +814,14 @@ impl DhtState {
                 let tid = msg
                     .get_our_transaction_id()
                     .ok_or(Error::BadTransactionId)?;
+                // Pocket Torrent (BEP 42) : l'adresse d'où ce nœud nous voit, seulement dans une
+                // réponse à une de nos requêtes (un nœud ne peut pas voter sans y être invité)
+                if self.inflight_by_transaction_id.contains_key(&(tid, addr))
+                    && let Some(ours) = msg.ip
+                    && let Some(ip) = self.external_ip.record(addr.ip(), ours.ip())
+                {
+                    self.adopt_bep42_id(ip);
+                }
                 let request = match self
                     .inflight_by_transaction_id
                     .remove(&(tid, addr))
@@ -824,7 +863,7 @@ impl DhtState {
                     version: None,
                     ip: Some(addr),
                     kind: MessageKind::Response(bprotocol::Response {
-                        id: self.id,
+                        id: self.id(),
                         ..Default::default()
                     }),
                 };
@@ -852,7 +891,7 @@ impl DhtState {
                     version: None,
                     ip: Some(addr),
                     kind: MessageKind::Response(bprotocol::Response {
-                        id: self.id,
+                        id: self.id(),
                         ..Default::default()
                     }),
                 };
@@ -880,7 +919,7 @@ impl DhtState {
                     version: None,
                     ip: Some(addr),
                     kind: MessageKind::Response(bprotocol::Response {
-                        id: self.id,
+                        id: self.id(),
                         nodes,
                         nodes6,
                         values: Some(compact_peer_info),
@@ -912,7 +951,7 @@ impl DhtState {
                     version: None,
                     ip: Some(addr),
                     kind: MessageKind::Response(bprotocol::Response {
-                        id: self.id,
+                        id: self.id(),
                         nodes,
                         nodes6,
                         ..Default::default()
@@ -934,7 +973,7 @@ impl DhtState {
 
     pub fn get_stats(&self) -> DhtStats {
         DhtStats {
-            id: self.id,
+            id: self.id(),
             outstanding_requests: self.inflight_by_transaction_id.len(),
             routing_table_size: self.routing_table_v4.read().len(),
             routing_table_size_v6: self.routing_table_v6.read().len(),
@@ -989,14 +1028,14 @@ impl DhtWorker {
             .map_err(|err| Error::lookup(hostname, err))?;
         let v4 = RecursiveRequest::find_node_for_routing_table(
             self.dht.clone(),
-            self.dht.id,
+            self.dht.id(),
             addrs.iter().copied().filter(|a| a.is_ipv4()),
         )
         .instrument(debug_span!("v4"));
 
         let v6 = RecursiveRequest::find_node_for_routing_table(
             self.dht.clone(),
-            self.dht.id,
+            self.dht.id(),
             addrs.iter().copied().filter(|a| a.is_ipv6()),
         )
         .instrument(debug_span!("v6"));
@@ -1316,9 +1355,9 @@ impl DhtState {
             let listen_addr = socket.bind_addr();
             info!("DHT listening on {:?}", listen_addr);
 
-            let peer_id = config
-                .peer_id
-                .unwrap_or_else(|| generate_azereus_style(*b"rQ", crate_version!()));
+            // Pocket Torrent : identifiant de départ entièrement aléatoire. Avant « -rQ0900- » +
+            // aléa : tous les nœuds rqbit entassés dans le même coin de la DHT, et reconnaissables
+            let peer_id = config.peer_id.unwrap_or_else(|| Id20::new(rand::random()));
             info!("starting up DHT with peer id {:?}", peer_id);
             let bootstrap_addrs = config
                 .bootstrap_addrs
@@ -1407,5 +1446,72 @@ impl FromSocketAddr for SocketAddrV6 {
             SocketAddr::V6(a) => Some(a),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod bep42_tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use super::*;
+
+    /// Trois nœuds différents nous voient en 81.10.20.30 : notre identifiant devient conforme
+    /// pour cette adresse, les tables gardent leurs nœuds, la mémoire des pairs suit.
+    #[test]
+    fn our_id_follows_our_public_address() {
+        let (tx, _rx) = unbounded_channel();
+        let first = Id20::new([0x2d; 20]);
+        let state = DhtState::new_internal(
+            first,
+            tx,
+            None,
+            None,
+            SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+            PeerStore::new(first),
+            CancellationToken::new(),
+        );
+        for i in 0..20u8 {
+            let mut id = [i; 20];
+            id[0] = i.wrapping_mul(13);
+            state.routing_table_v4.write().add_node(
+                Id20::new(id),
+                SocketAddr::from((Ipv4Addr::new(20, 0, 0, i), 6881)),
+            );
+        }
+        let before: Vec<Id20> = state
+            .routing_table_v4
+            .read()
+            .iter()
+            .map(|n| n.id())
+            .collect();
+        let ours: IpAddr = "81.10.20.30".parse().unwrap();
+        for voter in ["1.1.1.1", "2.2.2.2", "3.3.3.3"] {
+            if let Some(ip) = state.external_ip.record(voter.parse().unwrap(), ours) {
+                state.adopt_bep42_id(ip);
+            }
+        }
+        let id = state.id();
+        assert_ne!(id, first);
+        assert!(crate::bep42::is_compliant(&id, ours));
+        assert_eq!(state.routing_table_v4.read().id(), id);
+        // la table est organisée autour de notre identifiant : les compartiments éloignés ne
+        // gardent que 8 nœuds, quelques-uns peuvent partir ; aucun n'apparaît
+        let after: Vec<Id20> = state
+            .routing_table_v4
+            .read()
+            .iter()
+            .map(|n| n.id())
+            .collect();
+        assert!(after.iter().all(|id| before.contains(id)));
+        assert!(
+            after.len() >= 8 && after.len() * 4 >= before.len() * 3,
+            "{} sur {}",
+            after.len(),
+            before.len()
+        );
+        assert_eq!(*state.peer_store.self_id_for_tests(), id);
+        // déjà conforme : rien ne change
+        state.adopt_bep42_id(ours);
+        assert_eq!(state.id(), id);
     }
 }
