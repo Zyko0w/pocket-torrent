@@ -130,7 +130,7 @@ export function ScheduleSection (props: SectionProps) {
               />
             </div>
           </div>
-          <p className='help'>Remplace les limites normales pendant cette plage ; le mode jeu reste prioritaire par-dessus.</p>
+          <p className='help'>Remplace les limites normales pendant cette plage ; le mode jeu reste prioritaire par-dessus. Une plage de nuit (23:00 → 07:00) compte pour le jour où elle commence ; même heure de début et de fin : toute la journée.</p>
         </>
       )}
     </Section>

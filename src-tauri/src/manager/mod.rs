@@ -332,6 +332,12 @@ fn remove_old_files(dir: &Path, max_age: Duration) {
 /// `proxy_password` : lu une fois dans le Gestionnaire d'identification (voir `Manager::proxy_password`),
 /// pas à chaque vérification.
 fn desired_binding(settings: &Settings, proxy_password: &str) -> Binding {
+    binding_with(settings, proxy_password, netif::find)
+}
+
+/// `find` : carte réseau d'après son nom (`netif::find`, remplacée dans les tests). VPN exigé
+/// mais carte absente, éteinte ou sans adresse : `Offline`, rien ne sort (arrêt d'urgence).
+fn binding_with(settings: &Settings, proxy_password: &str, find: impl Fn(&str) -> Option<netif::Adapter>) -> Binding {
     if settings.vpn.mode == VpnMode::Proxy {
         let vpn = &settings.vpn;
         return Binding::Proxy(crate::engine::ProxyUrl::new(
@@ -343,7 +349,7 @@ fn desired_binding(settings: &Settings, proxy_password: &str) -> Binding {
     }
     match settings.vpn.required_adapter() {
         None => Binding::Free,
-        Some(name) => match netif::find(name) {
+        Some(name) => match find(name) {
             Some(adapter) if adapter.usable() => Binding::Vpn { adapter: adapter.name, ipv6: adapter.ipv6.is_some() },
             _ => Binding::Offline,
         },
@@ -550,5 +556,56 @@ impl Manager {
 
     pub fn take_launch_links(&self) -> Vec<String> {
         std::mem::take(&mut *self.launch_links.lock())
+    }
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    use crate::settings::WIREGUARD_ADAPTER;
+
+    fn adapter(name: &str, up: bool, ip: bool) -> netif::Adapter {
+        netif::Adapter {
+            name: name.into(),
+            description: String::new(),
+            up,
+            ipv4: ip.then(|| std::net::Ipv4Addr::new(10, 2, 0, 2)),
+            ipv6: None,
+            likely_vpn: true,
+        }
+    }
+
+    /// Arrêt d'urgence : VPN exigé mais carte absente, éteinte ou sans adresse → rien ne sort.
+    #[test]
+    fn required_vpn_never_falls_back_to_the_normal_network() {
+        let mut settings = Settings::default();
+        assert!(matches!(binding_with(&settings, "", |_| None), Binding::Free));
+
+        settings.vpn.mode = VpnMode::Adapter;
+        settings.vpn.adapter = "NordLynx".into();
+        assert!(matches!(binding_with(&settings, "", |_| None), Binding::Offline), "carte absente");
+        assert!(matches!(binding_with(&settings, "", |n| Some(adapter(n, false, true))), Binding::Offline), "éteinte");
+        assert!(matches!(binding_with(&settings, "", |n| Some(adapter(n, true, false))), Binding::Offline), "sans IP");
+        assert!(matches!(
+            binding_with(&settings, "", |n| Some(adapter(n, true, true))),
+            Binding::Vpn { adapter, .. } if adapter == "NordLynx"
+        ));
+        // aucune carte choisie : jamais « n'importe quelle carte »
+        settings.vpn.adapter.clear();
+        assert!(matches!(binding_with(&settings, "", |_| None), Binding::Offline));
+
+        settings.vpn.mode = VpnMode::Wireguard;
+        let asked = std::cell::RefCell::new(String::new());
+        let binding = binding_with(&settings, "", |n| {
+            *asked.borrow_mut() = n.to_owned();
+            None
+        });
+        assert!(matches!(binding, Binding::Offline));
+        assert_eq!(*asked.borrow(), WIREGUARD_ADAPTER, "tunnel intégré : sa propre carte");
+
+        settings.vpn.mode = VpnMode::Proxy;
+        settings.vpn.proxy_host = "proxy.exemple.com".into();
+        settings.vpn.proxy_port = 1080;
+        assert!(matches!(binding_with(&settings, "secret", |_| None), Binding::Proxy(_)));
     }
 }

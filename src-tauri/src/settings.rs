@@ -234,20 +234,28 @@ impl Default for ScheduleSettings {
 impl ScheduleSettings {
     /// Vrai si l'heure locale actuelle tombe dans la plage programmée (gère le passage de minuit).
     pub fn active_now(&self) -> bool {
+        use chrono::{Datelike, Timelike};
+        let now = chrono::Local::now();
+        let minutes = u16::try_from(now.hour() * 60 + now.minute()).unwrap_or(0);
+        self.active_at(now.weekday().num_days_from_sunday() as u8, minutes)
+    }
+
+    /// `weekday` : dimanche = 0. Une plage qui passe minuit (23 h → 7 h) compte pour le jour où
+    /// elle commence : samedi 1 h relève du vendredi. Début = fin : toute la journée.
+    pub fn active_at(&self, weekday: u8, minutes: u16) -> bool {
         if !self.enabled {
             return false;
         }
-        let now = chrono::Local::now();
-        use chrono::{Datelike, Timelike};
-        let weekday = now.weekday().num_days_from_sunday() as u8;
-        if !self.days.contains(&weekday) {
-            return false;
-        }
-        let minutes = u16::try_from(now.hour() * 60 + now.minute()).unwrap_or(0);
-        if self.start_minutes <= self.end_minutes {
-            minutes >= self.start_minutes && minutes < self.end_minutes
+        let day = |d: u8| self.days.contains(&d);
+        let (start, end) = (self.start_minutes, self.end_minutes);
+        if start == end {
+            day(weekday)
+        } else if start < end {
+            day(weekday) && minutes >= start && minutes < end
+        } else if minutes >= start {
+            day(weekday)
         } else {
-            minutes >= self.start_minutes || minutes < self.end_minutes
+            minutes < end && day((weekday + 6) % 7)
         }
     }
 }
@@ -779,5 +787,50 @@ mod incomplete_dir_tests {
         for bad in [r"D:\Téléchargements", r"d:\téléchargements\", r"E:\Films", "relatif"] {
             assert!(with(bad).is_err(), "{bad}");
         }
+    }
+}
+
+#[cfg(test)]
+mod schedule_tests {
+    use super::ScheduleSettings;
+
+    fn schedule(start: u16, end: u16, days: &[u8]) -> ScheduleSettings {
+        ScheduleSettings {
+            enabled: true,
+            start_minutes: start,
+            end_minutes: end,
+            days: days.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn day_ranges_follow_the_chosen_days() {
+        let s = schedule(9 * 60, 17 * 60, &[1, 2]); // lundi, mardi 9 h → 17 h
+        assert!(s.active_at(1, 9 * 60));
+        assert!(s.active_at(2, 16 * 60 + 59));
+        assert!(!s.active_at(2, 17 * 60), "fin exclue");
+        assert!(!s.active_at(3, 12 * 60), "mercredi non choisi");
+        assert!(!ScheduleSettings { enabled: false, ..s }.active_at(1, 10 * 60));
+    }
+
+    /// Plage de nuit : vendredi 23 h → 7 h dure jusqu'au samedi 7 h (avant : coupée à minuit).
+    #[test]
+    fn night_ranges_belong_to_the_day_they_start() {
+        let s = schedule(23 * 60, 7 * 60, &[5]); // vendredi
+        assert!(s.active_at(5, 23 * 60 + 30));
+        assert!(s.active_at(6, 60), "samedi 1 h : suite de la nuit de vendredi");
+        assert!(!s.active_at(6, 7 * 60));
+        assert!(!s.active_at(6, 23 * 60 + 30), "samedi soir non choisi");
+        assert!(!s.active_at(5, 60), "vendredi 1 h : suite de jeudi, non choisi");
+        // dimanche → lundi (passage de 0 à 6)
+        assert!(schedule(22 * 60, 6 * 60, &[6]).active_at(0, 3 * 60));
+    }
+
+    #[test]
+    fn equal_start_and_end_cover_the_whole_day() {
+        let s = schedule(8 * 60, 8 * 60, &[0]);
+        assert!(s.active_at(0, 0) && s.active_at(0, 23 * 60 + 59));
+        assert!(!s.active_at(1, 12 * 60));
     }
 }

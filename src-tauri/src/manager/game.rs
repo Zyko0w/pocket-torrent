@@ -2,29 +2,31 @@
 
 use super::*;
 
+/// Limites appliquées : le planificateur (§5) remplace les limites normales pendant sa plage
+/// horaire, puis le mode jeu abaisse le tout (la plus basse l'emporte, 0 = illimitée). En mode
+/// « pause », la réception est arrêtée ailleurs : seul l'envoi est limité ici.
+fn combined_limits(settings: &Settings, schedule_active: bool, game_active: bool) -> SpeedLimits {
+    let gm = &settings.game_mode;
+    let base = if schedule_active {
+        SpeedLimits { down_kbps: settings.schedule.down_kbps, up_kbps: settings.schedule.up_kbps }
+    } else {
+        settings.limits
+    };
+    let lowest = |a: u32, b: u32| match (a, b) {
+        (0, b) => b,
+        (a, 0) => a,
+        (a, b) => a.min(b),
+    };
+    SpeedLimits {
+        down_kbps: lowest(base.down_kbps, if game_active && gm.action == GameAction::Limit { gm.down_kbps } else { 0 }),
+        up_kbps: lowest(base.up_kbps, if game_active { gm.up_kbps } else { 0 }),
+    }
+}
+
 impl Manager {
     pub(super) fn effective_limits(&self) -> SpeedLimits {
         let settings = self.settings.read();
-        let game = self.game.lock();
-        let gm = &settings.game_mode;
-        // planificateur (§5) : remplace les limites normales pendant sa plage horaire
-        let base = if settings.schedule.active_now() {
-            SpeedLimits { down_kbps: settings.schedule.down_kbps, up_kbps: settings.schedule.up_kbps }
-        } else {
-            settings.limits
-        };
-        let lowest = |a: u32, b: u32| match (a, b) {
-            (0, b) => b,
-            (a, 0) => a,
-            (a, b) => a.min(b),
-        };
-        SpeedLimits {
-            down_kbps: lowest(
-                base.down_kbps,
-                if game.active && gm.action == GameAction::Limit { gm.down_kbps } else { 0 },
-            ),
-            up_kbps: lowest(base.up_kbps, if game.active { gm.up_kbps } else { 0 }),
-        }
+        combined_limits(&settings, settings.schedule.active_now(), self.game.lock().active)
     }
 
     pub(super) fn apply_limits(&self) {
@@ -79,5 +81,34 @@ impl Manager {
         self.game.lock().checked = false;
         self.check_game().await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schedule_and_game_mode_combine_to_the_lowest_limit() {
+        let mut settings = Settings { limits: SpeedLimits { down_kbps: 5000, up_kbps: 0 }, ..Default::default() };
+        settings.schedule.down_kbps = 0;
+        settings.schedule.up_kbps = 300;
+        settings.game_mode.down_kbps = 1000;
+        settings.game_mode.up_kbps = 100;
+        settings.game_mode.action = GameAction::Limit;
+        let limits = |settings: &Settings, schedule, game| {
+            let l = combined_limits(settings, schedule, game);
+            (l.down_kbps, l.up_kbps)
+        };
+        assert_eq!(limits(&settings, false, false), (5000, 0), "limites normales");
+        assert_eq!(limits(&settings, true, false), (0, 300), "planificateur : remplace, 0 = illimitée");
+        assert_eq!(limits(&settings, false, true), (1000, 100), "jeu : la plus basse");
+        assert_eq!(limits(&settings, true, true), (1000, 100));
+        settings.game_mode.action = GameAction::Pause;
+        assert_eq!(
+            limits(&settings, false, true),
+            (5000, 100),
+            "pause : l'envoi reste limité, la réception est arrêtée par la file"
+        );
     }
 }

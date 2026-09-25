@@ -2,6 +2,54 @@
 
 use super::*;
 
+/// Décision d'un passage de la file (voir `plan_queue`).
+#[derive(Default)]
+struct QueuePlan {
+    /// En cours, à remettre en attente (trop de téléchargements actifs).
+    wait: Vec<JobKey>,
+    /// En attente, à démarrer, dans l'ordre.
+    start: Vec<JobKey>,
+    /// En attente mais pas assez de place sur le disque.
+    no_space: Vec<(JobKey, String)>,
+}
+
+/// `queued` : déjà trié (priorité, puis ordre d'ajout). `max` : 0 = illimité. `space_problem` :
+/// raison de ne pas démarrer faute de place, voir `Manager::space_problem`.
+fn plan_queue(
+    running: &[Slot],
+    queued: &[Slot],
+    max: usize,
+    ignore_slow: bool,
+    space_problem: impl Fn(&Slot) -> Option<String>,
+) -> QueuePlan {
+    let mut plan = QueuePlan::default();
+    // « Démarrer maintenant » passe devant la file sans prendre la place des autres ;
+    // un téléchargement lent (§ ignore_slow) non plus, pour ne pas bloquer les autres
+    let mut counted: Vec<&Slot> = running.iter().filter(|s| !s.forced && !(ignore_slow && s.slow)).collect();
+
+    if max > 0 && counted.len() > max {
+        // trop de téléchargements actifs (limite baissée, redémarrage…) : les moins prioritaires attendent
+        let excess = counted.len() - max;
+        counted.sort_by(|a, b| b.priority.rank().cmp(&a.priority.rank()).then(b.added_at.cmp(&a.added_at)));
+        plan.wait = counted.into_iter().take(excess).map(|s| s.key.clone()).collect();
+        return plan;
+    }
+
+    let mut count = counted.len();
+    for slot in queued {
+        if !slot.forced && max > 0 && count >= max {
+            continue;
+        }
+        if let Some(problem) = space_problem(slot) {
+            plan.no_space.push((slot.key.clone(), problem));
+            continue;
+        }
+        plan.start.push(slot.key.clone());
+        count += 1;
+    }
+    plan
+}
+
 impl Manager {
     pub(super) fn slots(&self, views: &[TorrentView]) -> (Vec<Slot>, Vec<Slot>) {
         let data = self.data.lock();
@@ -83,34 +131,18 @@ impl Manager {
             return;
         }
         let queue = self.settings.read().queue.clone();
-        let max = queue.max_active as usize;
         let (running, queued) = self.slots(views);
-        // « Démarrer maintenant » passe devant la file sans prendre la place des autres ;
-        // un téléchargement lent (§ ignore_slow) non plus, pour ne pas bloquer les autres
-        let mut candidates: Vec<&Slot> =
-            running.iter().filter(|s| !s.forced && !(queue.ignore_slow && s.slow)).collect();
-
-        if max > 0 && candidates.len() > max {
-            // trop de téléchargements actifs (limite baissée, redémarrage…) : les moins prioritaires attendent
-            let excess = candidates.len() - max;
-            candidates.sort_by(|a, b| b.priority.rank().cmp(&a.priority.rank()).then(b.added_at.cmp(&a.added_at)));
-            for slot in candidates.into_iter().take(excess) {
-                self.hold(&slot.key, Hold::Queue).await;
-            }
-            return;
+        let plan = plan_queue(&running, &queued, queue.max_active as usize, queue.ignore_slow, |slot| {
+            self.space_problem(&slot.folder, slot.needed)
+        });
+        for key in &plan.wait {
+            self.hold(key, Hold::Queue).await;
         }
-
-        let mut count = candidates.len();
-        for slot in queued {
-            if !slot.forced && max > 0 && count >= max {
-                continue;
-            }
-            if let Some(problem) = self.space_problem(&slot.folder, slot.needed) {
-                self.hold_for_space(&slot.key, problem).await;
-                continue;
-            }
-            self.release(&slot.key).await;
-            count += 1;
+        for (key, problem) in plan.no_space {
+            self.hold_for_space(&key, problem).await;
+        }
+        for key in &plan.start {
+            self.release(key).await;
         }
     }
 
@@ -263,5 +295,82 @@ impl Manager {
             self.hold(&JobKey::Torrent(hash), Hold::Seeded).await;
             self.notify(Notify::Done, "Partage arrêté", &format!("{name} a atteint sa limite de partage."));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn slot(id: &str, priority: Priority, added_at: u64) -> Slot {
+        Slot {
+            key: JobKey::Direct(id.into()),
+            priority,
+            added_at,
+            forced: false,
+            folder: PathBuf::new(),
+            needed: 0,
+            slow: false,
+        }
+    }
+
+    fn ids(keys: &[JobKey]) -> Vec<&str> {
+        keys.iter()
+            .map(|k| match k {
+                JobKey::Direct(id) | JobKey::Torrent(id) | JobKey::Pending(id) => id.as_str(),
+            })
+            .collect()
+    }
+
+    fn plan(running: &[Slot], queued: &[Slot], max: usize, ignore_slow: bool) -> QueuePlan {
+        plan_queue(running, queued, max, ignore_slow, |_| None)
+    }
+
+    #[test]
+    fn queue_starts_in_order_up_to_the_limit() {
+        let queued = [slot("a", Priority::High, 3), slot("b", Priority::Normal, 1), slot("c", Priority::Low, 0)];
+        assert_eq!(ids(&plan(&[], &queued, 2, false).start), ["a", "b"]);
+        assert_eq!(ids(&plan(&[], &queued, 0, false).start), ["a", "b", "c"], "0 = illimité");
+        let running = [slot("r", Priority::Normal, 0)];
+        assert_eq!(ids(&plan(&running, &queued, 2, false).start), ["a"]);
+    }
+
+    #[test]
+    fn forced_and_slow_downloads_do_not_take_a_place() {
+        let queued = [slot("a", Priority::Normal, 1), slot("b", Priority::Normal, 2)];
+        let mut forced = slot("f", Priority::Normal, 0);
+        forced.forced = true;
+        assert_eq!(ids(&plan(&[forced], &queued, 1, false).start), ["a"]);
+        let mut slow = slot("s", Priority::Normal, 0);
+        slow.slow = true;
+        assert!(plan(std::slice::from_ref(&slow), &queued, 1, false).start.is_empty(), "lent compté");
+        assert_eq!(ids(&plan(&[slow], &queued, 1, true).start), ["a"], "lent ignoré");
+        // « Démarrer maintenant » en attente : démarre même file pleine
+        let mut now = slot("n", Priority::Low, 9);
+        now.forced = true;
+        assert_eq!(ids(&plan(&[slot("r", Priority::Normal, 0)], &[now], 1, false).start), ["n"]);
+    }
+
+    #[test]
+    fn lowered_limit_pauses_the_least_important_first() {
+        let running = [
+            slot("haute", Priority::High, 5),
+            slot("basse-ancienne", Priority::Low, 1),
+            slot("basse-recente", Priority::Low, 2),
+            slot("normale", Priority::Normal, 0),
+        ];
+        let plan = plan(&running, &[slot("x", Priority::High, 0)], 2, false);
+        assert_eq!(ids(&plan.wait), ["basse-recente", "basse-ancienne"]);
+        assert!(plan.start.is_empty(), "rien ne démarre pendant qu'on réduit");
+    }
+
+    #[test]
+    fn full_disk_skips_to_the_next_download() {
+        let mut big = slot("gros", Priority::High, 0);
+        big.needed = 1 << 40;
+        let queued = [big, slot("petit", Priority::Normal, 1)];
+        let plan = plan_queue(&[], &queued, 1, false, |s| (s.needed > 1 << 30).then(|| "plein".into()));
+        assert_eq!(ids(&plan.start), ["petit"]);
+        assert_eq!(plan.no_space.len(), 1);
     }
 }
