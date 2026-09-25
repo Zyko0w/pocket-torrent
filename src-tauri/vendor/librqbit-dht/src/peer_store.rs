@@ -104,6 +104,11 @@ impl<'de> Deserialize<'de> for PeerStore {
 
 impl PeerStore {
     #[cfg(test)]
+    pub(crate) fn stored_peers(&self) -> u32 {
+        self.peers_len.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
     pub(crate) fn self_id_for_tests(&self) -> parking_lot::RwLockReadGuard<'_, Id20> {
         self.self_id.read()
     }

@@ -6,6 +6,8 @@ mod error;
 #[path = "../../librqbit-core/src/fuzz_mutator.rs"]
 mod fuzz_mutator;
 mod peer_store;
+#[cfg(test)]
+mod pentest_tests;
 mod persistence;
 mod routing_table;
 mod utils;

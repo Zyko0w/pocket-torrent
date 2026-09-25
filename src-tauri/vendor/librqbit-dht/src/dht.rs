@@ -568,6 +568,9 @@ impl<C: RecursiveRequestCallbacks> RecursiveRequest<C> {
     }
 }
 
+/// Pocket Torrent : délai entre deux tentatives d'amorçage après un échec.
+const BOOTSTRAP_RETRY: Duration = Duration::from_secs(60);
+
 pub struct DhtState {
     /// Pocket Torrent : modifiable, recalculé d'après notre adresse publique (BEP 42).
     id: RwLock<Id20>,
@@ -1060,6 +1063,24 @@ impl DhtWorker {
             .await
     }
 
+    /// Pocket Torrent : amorçage retenté toutes les minutes tant qu'aucun nœud d'amorçage n'a
+    /// répondu. Avant, un échec (réseau pas encore prêt au démarrage, DNS bloqué, VPN en retard)
+    /// arrêtait tout le nœud DHT, sans message, jusqu'au redémarrage du moteur.
+    async fn bootstrap_until_success(&self, bootstrap_addrs: &[String]) -> crate::Result<()> {
+        if bootstrap_addrs.is_empty() {
+            return Ok(());
+        }
+        loop {
+            match self.bootstrap(bootstrap_addrs).await {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    warn!("DHT bootstrap failed, retrying in {BOOTSTRAP_RETRY:?}: {e:#}");
+                    tokio::time::sleep(BOOTSTRAP_RETRY).await;
+                }
+            }
+        }
+    }
+
     async fn bootstrap(&self, bootstrap_addrs: &[String]) -> crate::Result<()> {
         let mut futs = FuturesUnordered::new();
 
@@ -1224,9 +1245,19 @@ impl DhtWorker {
             Err(Error::DhtDead)
         };
         let reader = async {
-            let mut buf = vec![0u8; 16384];
+            // Pocket Torrent : 64 Kio (taille maximale d'un datagramme UDP) et erreurs de lecture
+            // non fatales. Avec 16 Kio, un seul paquet plus gros, envoyé par n'importe qui,
+            // faisait échouer la lecture (WSAEMSGSIZE sous Windows) et arrêtait tout le nœud DHT.
+            let mut buf = vec![0u8; 65536];
             loop {
-                let (size, addr) = socket.recv_from(&mut buf).await.map_err(Error::Recv)?;
+                let (size, addr) = match socket.recv_from(&mut buf).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        debug!("DHT recv error, ignored: {e:#}");
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        continue;
+                    }
+                };
                 match bprotocol::deserialize_message::<ByteBufOwned>(&buf[..size]) {
                     Ok(msg) => match output_tx.send((msg, addr)).await {
                         Ok(_) => {}
@@ -1253,7 +1284,7 @@ impl DhtWorker {
             .framer(&self.socket, in_rx, out_tx)
             .instrument(debug_span!("dht_framer"));
 
-        let bootstrap = self.bootstrap(bootstrap_addrs);
+        let bootstrap = self.bootstrap_until_success(bootstrap_addrs);
         let mut bootstrap_done = false;
 
         let response_reader = {

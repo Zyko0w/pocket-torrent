@@ -344,7 +344,9 @@ pub(crate) struct Dispatcher<T: Transport, E: UtpEnvironment> {
 
 impl<T: Transport, E: UtpEnvironment> Dispatcher<T, E> {
     pub(crate) async fn run_forever(mut self) -> crate::Result<()> {
-        let mut read_buf = [0u8; 16384];
+        // Pocket Torrent : 64 Kio, la taille maximale d'un datagramme UDP. Avec 16 Kio, Windows
+        // renvoyait une erreur (WSAEMSGSIZE) pour un paquet plus gros, qui arrêtait tout le µTP.
+        let mut read_buf = vec![0u8; 65536];
 
         loop {
             if let Err(e) = self.run_once(&mut read_buf).await {
@@ -367,7 +369,16 @@ impl<T: Transport, E: UtpEnvironment> Dispatcher<T, E> {
                 self.on_control(control).await;
             },
             recv = self.socket.transport.recv_from(read_buf) => {
-                let (len, addr) = recv.map_err(Error::Recv)?;
+                // Pocket Torrent : une erreur de lecture (paquet reçu d'un inconnu) n'arrête plus
+                // tout le µTP ; courte pause si elle se répète (socket réellement cassé)
+                let (len, addr) = match recv {
+                    Ok(r) => r,
+                    Err(e) => {
+                        debug!("uTP recv error, ignored: {e:#}");
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        return Ok(());
+                    }
+                };
                 let message = match UtpMessage::deserialize(&read_buf[..len]) {
                     Some(msg) => msg,
                     None => {
