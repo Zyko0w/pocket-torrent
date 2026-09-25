@@ -405,6 +405,9 @@ mod tracker_order_tests {
     }
 }
 
+/// Pocket Torrent : vérifications de poignée de main en cours au plus par adresse IP.
+const MAX_PENDING_PER_IP: usize = 16;
+
 pub fn read_local_file_including_stdin(filename: &str) -> anyhow::Result<Vec<u8>> {
     let mut buf = Vec::new();
     if filename == "-" {
@@ -1186,6 +1189,8 @@ impl Session {
         max_pending_incoming_handshake_checks: usize,
     ) -> anyhow::Result<()> {
         let mut futs = FuturesUnordered::new();
+        // Pocket Torrent : vérifications en cours par adresse IP (voir `MAX_PENDING_PER_IP`)
+        let mut pending_per_ip: HashMap<std::net::IpAddr, usize> = HashMap::new();
         let session = Arc::downgrade(&self);
         drop(self);
 
@@ -1195,16 +1200,24 @@ impl Session {
                     match r {
                         Ok((addr, (read, write))) => {
                             trace!("accepted connection from {addr}");
+                            // Pocket Torrent : une seule machine ne peut pas occuper toutes les
+                            // places de vérification (connexions muettes gardées 10 s chacune)
+                            let pending = pending_per_ip.entry(addr.ip()).or_default();
+                            if *pending >= MAX_PENDING_PER_IP {
+                                debug!(%addr, "too many pending handshakes from this address, dropped");
+                                continue;
+                            }
+                            *pending += 1;
                             let session = session.upgrade().context("session is dead")?;
                             let span = debug_span!(parent: session.rs(), "incoming", addr=%addr);
-                            futs.push(
-                                session.check_incoming_connection(addr, A::KIND, Box::new(read), Box::new(write))
-                                    .map_err(|e| {
-                                        debug!("error checking incoming connection: {e:#}");
-                                        e
-                                    })
-                                    .instrument(span)
-                            );
+                            let check = session
+                                .check_incoming_connection(addr, A::KIND, Box::new(read), Box::new(write))
+                                .map_err(|e| {
+                                    debug!("error checking incoming connection: {e:#}");
+                                    e
+                                })
+                                .instrument(span);
+                            futs.push(async move { (addr.ip(), check.await) });
                         }
                         Err(e) => {
                             warn!("error accepting: {e:#}");
@@ -1215,10 +1228,22 @@ impl Session {
                         }
                     }
                 },
-                Some(Ok((live, checked))) = futs.next(), if !futs.is_empty() => {
-                    let (addr, kind) = (checked.addr, checked.kind);
-                    if let Err(e) = live.add_incoming_peer(checked) {
-                        warn!(?addr, ?kind, "error handing over incoming connection: {e:#}");
+                // Pocket Torrent : tout résultat est consommé. Avant, seul un succès l'était ; un
+                // échec désactivait cette branche et, les places de vérification pleines, celle
+                // de l'acceptation aussi : tokio paniquait (« all branches are disabled ») et
+                // plus aucune connexion entrante n'était acceptée jusqu'au redémarrage du moteur.
+                Some((ip, result)) = futs.next(), if !futs.is_empty() => {
+                    if let Some(pending) = pending_per_ip.get_mut(&ip) {
+                        *pending = pending.saturating_sub(1);
+                        if *pending == 0 {
+                            pending_per_ip.remove(&ip);
+                        }
+                    }
+                    if let Ok((live, checked)) = result {
+                        let (addr, kind) = (checked.addr, checked.kind);
+                        if let Err(e) = live.add_incoming_peer(checked) {
+                            warn!(?addr, ?kind, "error handing over incoming connection: {e:#}");
+                        }
                     }
                 },
             }
