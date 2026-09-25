@@ -62,6 +62,8 @@ pub const MY_EXTENDED_UT_METADATA: u8 = 3;
 
 pub const EXTENDED_UT_PEX_KEY: &[u8] = b"ut_pex";
 pub const MY_EXTENDED_UT_PEX: u8 = 1;
+/// Pocket Torrent : perçage de NAT (BEP 55).
+pub const MY_EXTENDED_UT_HOLEPUNCH: u8 = 4;
 
 #[derive(Clone, Copy)]
 pub struct MsgIdDebug(MsgId);
@@ -132,6 +134,9 @@ pub enum MessageDeserializeError {
     HandshakePstrWrongContent,
     #[error("pstr should be 19 bytes long but got {0}")]
     HandshakePstrWrongLength(u8),
+    /// Pocket Torrent : message de perçage de NAT (BEP 55) mal formé.
+    #[error("ut_holepunch: malformed message")]
+    UtHolepunchMalformed,
 }
 
 pub fn serialize_piece_preamble(chunk: &ChunkInfo, mut buf: &mut [u8]) -> usize {
@@ -260,6 +265,8 @@ pub enum SerializeError {
     NeedUtMetadata,
     #[error("need peer's handshake to serialize ut_pex, or peer does't support ut_pex")]
     NeedPex,
+    #[error("peer doesn't support ut_holepunch")]
+    NeedHolepunch,
 }
 
 impl From<std::io::Error> for SerializeError {
@@ -671,6 +678,18 @@ mod tests {
                 UtMetadataData::from_bytes(0, 5, b"BBBBB"[..].into()),
             ))),
             frame(20, &pex),
+            // perçage de NAT (BEP 55)
+            extended(ExtendedMessage::UtHolepunch(
+                crate::extended::ut_holepunch::UtHolepunch::Connect(
+                    "1.2.3.4:6881".parse().unwrap(),
+                ),
+            )),
+            extended(ExtendedMessage::UtHolepunch(
+                crate::extended::ut_holepunch::UtHolepunch::Error(
+                    "[2001:db8::1]:6881".parse().unwrap(),
+                    crate::extended::ut_holepunch::HolepunchError::NoSupport,
+                ),
+            )),
             handshake.to_vec(),
         ];
         let seed_refs: Vec<&[u8]> = seeds.iter().map(Vec::as_slice).collect();

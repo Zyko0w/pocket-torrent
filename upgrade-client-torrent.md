@@ -37,7 +37,7 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§5 / §6.1** Création de torrent avancée | ❌ *retirée (0.2.1)* | Faite (taille de pièce, trackers, option privée) puis retirée avec « Partager en torrent » : une commande de moins exposée |
 | **§6.1** BitTorrent v2 / hybride | ❌ *mis de côté* | Rien d'utilisable en amont chez rqbit (juste des fondations) ; on surveille l'issue #546 |
 | **§6.3** Sélection de fichiers dans un magnet (BEP 53) | ✅ *déjà présent* | Fonctionnait déjà nativement dans librqbit, non exploité avant vérification |
-| **§6.2 / §6.3** DHT avancé, holepunch, pont WebTorrent | ❌ *refusé* | Non supporté par le moteur ; le holepunch demanderait du code réseau non testable ici (pas de vrai NAT à disposition) |
+| **§6.2 / §6.3** DHT avancé, holepunch, pont WebTorrent | ⚠️ *en partie (25/09)* | BEP 42 (identifiants DHT liés à l'IP) et BEP 55 (perçage de NAT, avec µTP) faits par correctifs moteur ; pont WebTorrent toujours écarté |
 | **§7.1-7.5** Démon/API séparés, REST v2, plugins, config TOML, Prometheus | ❌ *refusé* | Refonte d'architecture, hors périmètre d'une amélioration incrémentale. **RSS fait depuis** (0.2.1 : flux de séries, filtres, épisodes, voir §7.3) |
 | **§7.6** Serveur de streaming | ❌ *retiré (25/09)* | Fait (serveur HTTP local, bouton « Lire ») puis retiré à la demande de l'utilisateur : jugé inutile, et il lisait le fichier tel quel sur le disque (morceaux manquants lus comme du vide) |
 | **§7.6** Priorité automatique aux sous-titres | ❌ *sans objet* | Lecture en flux retirée le 25/09 |
@@ -557,7 +557,7 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 - [ ] Séparation démon et interface, **API REST v2 + WebSocket + OpenAPI** — refusé, refonte d'architecture hors périmètre incrémental.
 - [ ] Configuration TOML versionnée, variables d'environnement, profils — refusé, casserait la promesse de migration du §12 si fait sans precaution.
 - [x] Mode confidentialité renforcée (fait, §9.6). [ ] Proxy sans fuite — pas de proxy manuel dans ce client (§9.4). [ ] Avertissement Tor — non applicable (§9.5).
-- [x] BEP 42 — fait le 25/09 (correctif moteur, voir `vendor/PATCHES.md`). [ ] BEP 55 — voir plus bas. [x] BEP 53 (sélection de fichiers dans un magnet) — déjà présent nativement dans librqbit.
+- [x] BEP 42 et BEP 55 — faits le 25/09 (correctifs moteur, voir `vendor/PATCHES.md`). BEP 55 actif seulement avec µTP (réglage Réseau). [x] BEP 53 (sélection de fichiers dans un magnet) — déjà présent nativement dans librqbit.
 - [x] RSS (0.2.1, voir §7.3). [ ] Règles regex, webhooks — refusés, hors périmètre incrémental.
 - [ ] Métriques Prometheus, journaux JSON — refusé (journal texte lisible fait à la place, §5) ; image Docker — non applicable, client de bureau.
 - [x] Piece picker : priorité aux pièces déjà entamées, priorité par fichier réglable (§4.1) — faits, avec un vrai gaspillage corrigé au passage. [x] Rarest-first et choking réel (§4.1/§4.2) — faits depuis par correctifs moteur (voir `vendor/PATCHES.md`).

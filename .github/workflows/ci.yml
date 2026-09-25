@@ -96,6 +96,13 @@ jobs:
           --config 'patch.crates-io.librqbit-upnp.path="../librqbit-upnp"'
           --config 'patch.crates-io.librqbit-utp.path="../librqbit-utp"'
 
+      - name: Rust — tests du protocole entre pairs (BEP 55, fuzzing des messages)
+        working-directory: src-tauri/vendor/librqbit-peer-protocol
+        run: >-
+          cargo test --lib --target-dir ../../target/pp-tests
+          --config 'patch.crates-io.librqbit-core.path="../librqbit-core"'
+          --config 'patch.crates-io.librqbit-bencode.path="../librqbit-bencode"'
+
       - name: Rust — tests DHT (BEP 42, fuzzing des messages)
         working-directory: src-tauri/vendor/librqbit-dht
         run: >-

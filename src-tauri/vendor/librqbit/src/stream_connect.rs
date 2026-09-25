@@ -185,6 +185,11 @@ pub(crate) struct StreamConnector {
 }
 
 impl StreamConnector {
+    /// Pocket Torrent : µTP disponible (perçage de NAT, BEP 55, qui passe par lui).
+    pub fn has_utp(&self) -> bool {
+        self.utp_socket.is_some() && self.proxy_config.is_none()
+    }
+
     pub fn encryption(&self) -> crate::mse::EncryptionMode {
         self.encryption
     }

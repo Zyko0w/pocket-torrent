@@ -75,6 +75,7 @@ use peer_binary_protocol::{
     extended::{
         self, ExtendedMessage,
         handshake::ExtendedHandshake,
+        ut_holepunch::UtHolepunch,
         ut_metadata::{UtMetadata, UtMetadataData},
         ut_pex::UtPex,
     },
@@ -181,11 +182,14 @@ pub enum AddIncomingPeerResult {
     ConcurrencyLimitReached,
 }
 
+/// BEP 11 : drapeau PEX « gère le perçage de NAT (BEP 55) ».
+const PEX_FLAG_HOLEPUNCH: u8 = 0x08;
+
 /// Pocket Torrent : pairs pris au plus dans un message PEX.
 const MAX_PEX_ADDED_PEERS: usize = 50;
 
 pub struct TorrentStateLive {
-    peers: PeerStates,
+    pub(crate) peers: PeerStates,
     /// Sérialise les décisions du choker (tour périodique et déblocage immédiat) : sans ça,
     /// deux pairs devenus intéressés au même instant pouvaient prendre la même place.
     choker_lock: parking_lot::Mutex<()>,
@@ -1087,6 +1091,137 @@ impl TorrentStateLive {
 const DEFAULT_PEER_REQUEST_WINDOW: usize = 128;
 
 /// Tests : déconnexions dues à BEP 21 (pair en partage seul alors qu'on a fini).
+// ------------------------------------------------------------------ Pocket Torrent : BEP 55
+
+/// Tests : mises en relation faites (intermédiaire) et reçues (demandeur, cible).
+#[cfg(test)]
+pub(crate) static HOLEPUNCH_RELAYED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+pub(crate) static HOLEPUNCH_CONNECTS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+impl TorrentStateLive {
+    /// Perçage de NAT possible : torrent public (comme le PEX, il fait circuler des adresses de
+    /// pairs) et µTP disponible (la connexion percée passe par lui ; jamais par un proxy).
+    fn holepunch_allowed(&self) -> bool {
+        !self.metadata.info.info().private && self.shared.connector.has_utp()
+    }
+
+    fn send_holepunch(&self, to: SocketAddr, msg: UtHolepunch) {
+        self.peers.with_live(to, |live| {
+            if live.holepunch {
+                let _ = live.tx.send(WriterRequest::Message(Message::Extended(
+                    ExtendedMessage::UtHolepunch(msg),
+                )));
+            }
+        });
+    }
+
+    /// Demandeur : `target`, qu'on n'a pas pu joindre directement, nous a été présenté par `via`.
+    pub(crate) fn holepunch_rendezvous(&self, via: SocketAddr, target: SocketAddr) {
+        if self.holepunch_allowed() {
+            debug!(?via, ?target, "BEP 55 : demande de mise en relation");
+            self.send_holepunch(via, UtHolepunch::Rendezvous(target));
+        }
+    }
+
+    pub(crate) fn on_holepunch_message(&self, from: SocketAddr, msg: UtHolepunch) {
+        if self.metadata.info.info().private {
+            return;
+        }
+        match msg {
+            UtHolepunch::Rendezvous(target) => self.holepunch_relay(from, target),
+            UtHolepunch::Connect(addr) => self.holepunch_connect(addr),
+            UtHolepunch::Error(addr, err) => {
+                debug!(?from, ?addr, ?err, "BEP 55 : mise en relation refusée")
+            }
+        }
+    }
+
+    /// Adresse où joindre un pair connecté : son port d'écoute annoncé plutôt que le port
+    /// temporaire d'une connexion entrante.
+    fn reachable_addr(&self, addr: SocketAddr) -> SocketAddr {
+        self.peers
+            .with_live(addr, |live| live.listen_port)
+            .flatten()
+            .map_or(addr, |port| SocketAddr::new(addr.ip(), port))
+    }
+
+    /// Intermédiaire : `from` demande à être mis en relation avec `target`. Les adresses
+    /// transmises sont celles que l'on constate soi-même, jamais celles fournies par le
+    /// demandeur : personne ne peut s'en servir pour faire contacter une adresse de son choix.
+    fn holepunch_relay(&self, from: SocketAddr, target: SocketAddr) {
+        use peer_binary_protocol::extended::ut_holepunch::HolepunchError;
+        let from_reachable = self.reachable_addr(from);
+        let refuse = |err| self.send_holepunch(from, UtHolepunch::Error(target, err));
+        if target == from || target == from_reachable {
+            return refuse(HolepunchError::NoSelf);
+        }
+        // pair connecté désigné par son adresse d'écoute (clé de la table, ou port annoncé)
+        let found = self.peers.states.iter().find_map(|entry| {
+            let live = entry.value().get_live()?;
+            let matches = *entry.key() == target
+                || (entry.key().ip() == target.ip() && live.listen_port == Some(target.port()));
+            matches.then(|| (*entry.key(), live.holepunch))
+        });
+        match found {
+            None => refuse(HolepunchError::NotConnected),
+            Some((_, false)) => refuse(HolepunchError::NoSupport),
+            Some((target_key, true)) => {
+                debug!(?from, ?target, "BEP 55 : mise en relation");
+                #[cfg(test)]
+                HOLEPUNCH_RELAYED.fetch_add(1, Ordering::Relaxed);
+                self.send_holepunch(target_key, UtHolepunch::Connect(from_reachable));
+                self.send_holepunch(from, UtHolepunch::Connect(target));
+            }
+        }
+    }
+
+    /// Mis en relation avec `addr` par un intermédiaire : connexion tout de suite (l'autre côté
+    /// fait de même, ce qui ouvre les deux routeurs). Au plus une fois toutes les 30 s par
+    /// adresse : un intermédiaire malveillant ne peut pas s'en servir pour bombarder quelqu'un.
+    fn holepunch_connect(&self, addr: SocketAddr) {
+        if !self.holepunch_allowed() || addr.port() == 0 {
+            return;
+        }
+        #[cfg(test)]
+        HOLEPUNCH_CONNECTS.fetch_add(1, Ordering::Relaxed);
+        if self.peers.add_if_not_seen(addr).is_some() {
+            // inconnu jusqu'ici : ajouté à la table, puis mis en file d'attente de connexion
+            self.peers.with_peer_mut(addr, "holepunch_new", |p| {
+                p.holepunch_at = Some(std::time::Instant::now())
+            });
+            let _ = self.peer_queue_tx.send(addr);
+            return;
+        }
+        let requeue = self
+            .peers
+            .with_peer_mut(addr, "holepunch_connect", |peer| {
+                if peer
+                    .holepunch_at
+                    .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30))
+                {
+                    return false;
+                }
+                match peer.get_state() {
+                    PeerState::Dead | PeerState::NotNeeded => {
+                        peer.holepunch_at = Some(std::time::Instant::now());
+                        peer.stats.reset_backoff();
+                        peer.set_state(PeerState::Queued, &self.peers);
+                        true
+                    }
+                    PeerState::Queued | PeerState::Connecting(_) | PeerState::Live(_) => false,
+                }
+            })
+            .unwrap_or(false);
+        if requeue {
+            debug!(?addr, "BEP 55 : connexion après mise en relation");
+            let _ = self.peer_queue_tx.send(addr);
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) static UPLOAD_ONLY_DISCONNECTS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
@@ -1203,6 +1338,9 @@ impl PeerConnectionHandler for &'_ PeerHandler {
                         })?;
                 }
             }
+            Message::Extended(ExtendedMessage::UtHolepunch(msg)) => {
+                self.state.on_holepunch_message(self.addr, msg);
+            }
             Message::Extended(ExtendedMessage::UtPex(pex)) => {
                 if self.state.metadata.info.info().private {
                     warn!(
@@ -1285,6 +1423,18 @@ impl PeerConnectionHandler for &'_ PeerHandler {
         if let (Some(yourip), Some(session)) = (&hs.yourip, self.state.shared.session.upgrade()) {
             session.external_ip_votes.record(self.addr.ip(), yourip.0);
         }
+
+        // Pocket Torrent (BEP 55) : port d'écoute annoncé et gestion du perçage de NAT
+        let (listen_port, holepunch) = (
+            hs.p.and_then(|p| u16::try_from(p).ok()).filter(|p| *p != 0),
+            hs.m.ut_holepunch.is_some(),
+        );
+        self.state
+            .peers
+            .with_live_mut(self.addr, "holepunch_handshake", |live| {
+                live.listen_port = listen_port;
+                live.holepunch = holepunch;
+            });
 
         if let Some(client_name) = hs.v.as_ref().and_then(format_peer_client_name) {
             self.state
@@ -1578,6 +1728,9 @@ impl PeerHandler {
             }
         };
         let prev = pe.value_mut().take_state(peers);
+        // Pocket Torrent (BEP 55) : jamais joint (connexion sortante en échec avant le moindre
+        // échange) : on pourra demander une mise en relation à qui nous l'a présenté
+        let never_reached = matches!(prev, PeerState::Connecting(_)) && !self.incoming;
 
         match prev {
             PeerState::Connecting(_) => {}
@@ -1658,9 +1811,16 @@ impl PeerHandler {
         }
 
         let backoff = pe.value_mut().stats.backoff.next();
+        let holepunch_via = never_reached
+            .then(|| pe.value_mut().holepunch_via())
+            .flatten();
 
         // Prevent deadlocks.
         drop(pe);
+
+        if let Some(via) = holepunch_via {
+            self.state.holepunch_rendezvous(via, handle);
+        }
 
         if let Some(dur) = backoff {
             if cfg!(feature = "_disable_reconnect_test") {
@@ -2285,6 +2445,7 @@ impl PeerHandler {
         // Pocket Torrent : seulement les pairs ajoutés (les « partis » étaient ajoutés aussi), et
         // 50 au plus par message comme le prévoit le PEX : un message énorme ne sert qu'à inonder
         // la liste (bornée en plus par `peers::MAX_KNOWN_PEERS`).
+        let source = self.addr;
         msg.added_peers()
             .take(MAX_PEX_ADDED_PEERS)
             .for_each(|peer| {
@@ -2300,6 +2461,17 @@ impl PeerHandler {
                         error
                     })
                     .ok();
+                // Pocket Torrent (BEP 55) : qui l'a présenté, et s'il gère le perçage de NAT
+                // (après l'ajout : le pair doit être dans la table)
+                let holepunch = peer.flags & PEX_FLAG_HOLEPUNCH != 0;
+                self.state
+                    .peers
+                    .with_peer_mut(peer.addr, "pex_source", |p| {
+                        if p.pex_source.is_none() || holepunch {
+                            p.pex_source = Some(source);
+                            p.pex_holepunch = holepunch;
+                        }
+                    });
             });
     }
 

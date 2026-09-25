@@ -30,6 +30,12 @@ pub(crate) struct Peer {
     state: PeerState,
     pub stats: stats::atomic::PeerStats,
     pub outgoing_address: Option<SocketAddr>,
+    /// Pocket Torrent (BEP 55) : pair qui nous l'a présenté par PEX, et s'il y était annoncé
+    /// comme gérant le perçage de NAT (drapeau 0x08, BEP 11).
+    pub pex_source: Option<SocketAddr>,
+    pub pex_holepunch: bool,
+    /// Dernière tentative de perçage vers ce pair (demande ou mise en relation reçue).
+    pub holepunch_at: Option<std::time::Instant>,
 }
 
 impl Peer {
@@ -49,6 +55,9 @@ impl Peer {
             state,
             stats: Default::default(),
             outgoing_address: None,
+            pex_source: None,
+            pex_holepunch: false,
+            holepunch_at: None,
         }
     }
 
@@ -58,7 +67,24 @@ impl Peer {
             outgoing_address: Some(addr),
             stats: Default::default(),
             state: Default::default(),
+            pex_source: None,
+            pex_holepunch: false,
+            holepunch_at: None,
         }
+    }
+
+    /// Pocket Torrent (BEP 55) : intermédiaire à qui demander une mise en relation avec ce pair,
+    /// qu'on n'a pas pu joindre directement (au plus une demande par minute et par pair).
+    pub(crate) fn holepunch_via(&mut self) -> Option<SocketAddr> {
+        let source = self.pex_source.filter(|_| self.pex_holepunch)?;
+        if self
+            .holepunch_at
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(60))
+        {
+            return None;
+        }
+        self.holepunch_at = Some(std::time::Instant::now());
+        Some(source)
     }
 
     pub(crate) fn reconnect_not_needed_peer(
@@ -280,6 +306,12 @@ pub(crate) struct LivePeerState {
     pub tx: PeerTx,
 
     pub connection_kind: ConnectionKind,
+
+    /// Pocket Torrent (BEP 55) : port d'écoute annoncé (`p` de la poignée de main étendue ;
+    /// pour une connexion entrante, le port de la connexion n'est qu'un port temporaire), et
+    /// gestion du perçage de NAT.
+    pub listen_port: Option<u16>,
+    pub holepunch: bool,
 }
 
 impl LivePeerState {
@@ -301,6 +333,8 @@ impl LivePeerState {
             request_slots_changed: Default::default(),
             tx,
             connection_kind,
+            listen_port: None,
+            holepunch: false,
         }
     }
 
