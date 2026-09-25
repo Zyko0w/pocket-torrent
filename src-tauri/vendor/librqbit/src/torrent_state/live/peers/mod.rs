@@ -176,6 +176,35 @@ impl PeerStates {
 mod tests {
     use super::*;
 
+    /// Un pair entrant ne demande rien tant qu'il n'a pas envoyé « Interested » : le choker ne
+    /// doit pas lui réserver de place d'envoi (il en raflait avant, au détriment des autres).
+    #[test]
+    fn incoming_peers_start_not_interested() {
+        let peers = PeerStates {
+            session_stats: Default::default(),
+            live_outgoing_peers: Default::default(),
+            stats: Default::default(),
+            states: Default::default(),
+        };
+        let addr = SocketAddr::from(([10, 0, 0, 1], 51413));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let peer = Peer::new_live_for_incoming_connection(
+            addr,
+            librqbit_core::hash_id::Id20::new([1; 20]),
+            tx,
+            &peers,
+            crate::stream_connect::ConnectionKind::Tcp,
+        );
+        peers.states.insert(addr, peer);
+        assert_eq!(peers.with_live(addr, |l| l.peer_interested), Some(false));
+        assert_eq!(peers.mark_peer_interested(addr, true), Some(false));
+        assert_eq!(
+            peers.mark_peer_interested(addr, false),
+            Some(true),
+            "« plus intéressé » pris en compte"
+        );
+    }
+
     #[test]
     fn known_peers_are_bounded() {
         let peers = PeerStates {

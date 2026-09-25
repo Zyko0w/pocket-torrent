@@ -1315,9 +1315,9 @@ impl PeerConnectionHandler for &'_ PeerHandler {
                 trace!("keepalive received");
             }
             Message::Have(h) => self.on_have(h),
-            Message::NotInterested => {
-                trace!("received \"not interested\", but we don't process it yet")
-            }
+            // Pocket Torrent : « plus intéressé » pris en compte (ignoré avant : le pair gardait
+            // sa place d'envoi à vie) ; sa place est libérée pour un pair qui en veut
+            Message::NotInterested => self.on_peer_not_interested(),
             Message::Cancel(_) => {
                 trace!("received \"cancel\", but we don't process it yet")
             }
@@ -2327,6 +2327,12 @@ impl PeerHandler {
         trace!("peer is interested");
         self.state.peers.mark_peer_interested(self.addr, true);
         self.state.unchoke_if_slot_free(self.addr);
+    }
+
+    fn on_peer_not_interested(&self) {
+        trace!("peer is not interested");
+        self.state.peers.mark_peer_interested(self.addr, false);
+        self.state.choke_uninterested(self.addr);
     }
 
     fn on_i_am_unchoked(&self) {

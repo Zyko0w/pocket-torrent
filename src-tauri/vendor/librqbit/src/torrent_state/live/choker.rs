@@ -147,6 +147,14 @@ impl TorrentStateLive {
         }
     }
 
+    /// Pair qui ne veut plus rien : sa place d'envoi est libérée (choker actif seulement).
+    pub(crate) fn choke_uninterested(&self, addr: SocketAddr) {
+        if self.upload_slots().is_some() {
+            let _decision = self.choker_lock.lock();
+            self.set_unchoked(addr, false);
+        }
+    }
+
     /// Tâche de fond du choker (lancée seulement si `upload_slots` est défini).
     pub(crate) async fn task_choker(self: Arc<Self>, slots: usize) -> crate::Result<()> {
         let mut previous: HashMap<SocketAddr, (u64, u64)> = HashMap::new();

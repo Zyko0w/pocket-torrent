@@ -39,6 +39,10 @@ pub(crate) struct Peer {
 }
 
 impl Peer {
+    /// Pocket Torrent : un pair entrant démarre « non intéressé », comme tout pair (BEP 3). Il
+    /// démarrait « intéressé » d'office : le choker lui réservait une place d'envoi sans qu'il ait
+    /// rien demandé (une source qui nous envoie des pièces raflait ainsi les places, au détriment
+    /// des pairs qui voulaient les nôtres).
     pub fn new_live_for_incoming_connection(
         addr: SocketAddr,
         peer_id: Id20,
@@ -46,7 +50,7 @@ impl Peer {
         counters: &PeerStates,
         connection_kind: ConnectionKind,
     ) -> Self {
-        let state = PeerState::Live(LivePeerState::new(peer_id, tx, true, connection_kind));
+        let state = PeerState::Live(LivePeerState::new(peer_id, tx, false, connection_kind));
         for counter in [&counters.session_stats, &counters.stats] {
             counter.inc(&state);
         }
@@ -239,7 +243,7 @@ impl Peer {
         match self.take_state(counters) {
             PeerState::Queued | PeerState::Dead | PeerState::NotNeeded => {
                 self.set_state(
-                    PeerState::Live(LivePeerState::new(peer_id, tx, true, connection_kind)),
+                    PeerState::Live(LivePeerState::new(peer_id, tx, false, connection_kind)),
                     counters,
                 );
             }
