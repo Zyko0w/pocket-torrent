@@ -137,6 +137,88 @@ pub use imp::{
     set_start_with_windows, start_with_windows_enabled,
 };
 
+// ------------------------------------------------- réparation des associations
+
+/// Type de fichier (« ProgID ») des .torrent ouverts par Pocket Torrent.
+const TORRENT_PROG_ID: &str = "PocketTorrent.Torrent";
+/// Celui des versions « Torrent Cloud » (effacé depuis) : l'extension qui y pointe encore est libre.
+const OLD_TORRENT_PROG_ID: &str = "TorrentCloud.Torrent";
+
+/// Associations trouvées au démarrage, quand l'option « liens magnet et fichiers .torrent » est
+/// active (commande magnet à nous).
+#[cfg_attr(not(windows), allow(dead_code))]
+struct RegistrationState {
+    /// Commande magnet sur l'exe actuel (pas un ancien dossier d'installation).
+    magnet_ok: bool,
+    /// Nom, icône et déclaration dans « Applications par défaut ».
+    caps_ok: bool,
+    /// Commande d'ouverture du type de fichier sur l'exe actuel.
+    prog_id_ok: bool,
+    /// Programme choisi pour l'extension `.torrent`.
+    torrent_ext: Option<String>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+struct Repairs {
+    magnet: bool,
+    capabilities: bool,
+    prog_id: bool,
+    torrent_ext: bool,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl Repairs {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl RegistrationState {
+    /// Ce qu'il faut remettre. L'extension `.torrent` n'est reprise que libre ou laissée par
+    /// l'ancien nom : si l'utilisateur a choisi un autre programme, il est respecté.
+    fn repairs(&self) -> Repairs {
+        let ext_free = match self.torrent_ext.as_deref() {
+            None => true,
+            Some(prog_id) => prog_id.eq_ignore_ascii_case(OLD_TORRENT_PROG_ID),
+        };
+        Repairs {
+            magnet: !self.magnet_ok,
+            capabilities: !self.caps_ok,
+            prog_id: !self.prog_id_ok,
+            torrent_ext: ext_free,
+        }
+    }
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::{RegistrationState, Repairs};
+
+    fn state(torrent_ext: Option<&str>) -> RegistrationState {
+        RegistrationState { magnet_ok: true, caps_ok: true, prog_id_ok: true, torrent_ext: torrent_ext.map(Into::into) }
+    }
+
+    #[test]
+    fn complete_registration_needs_nothing() {
+        assert!(state(Some("PocketTorrent.Torrent")).repairs().is_empty());
+    }
+
+    /// Cas trouvé le 26/09 : magnet en place, plus rien pour les .torrent (ancien « Torrent Cloud »).
+    #[test]
+    fn magnet_alone_gets_the_torrent_files_back() {
+        let broken = RegistrationState { caps_ok: false, prog_id_ok: false, ..state(None) };
+        assert_eq!(broken.repairs(), Repairs { magnet: false, capabilities: true, prog_id: true, torrent_ext: true });
+        assert!(state(Some("TorrentCloud.Torrent")).repairs().torrent_ext, "ancien nom : repris");
+    }
+
+    #[test]
+    fn another_program_chosen_for_torrent_files_is_respected() {
+        assert!(!state(Some("qBittorrent.File.Torrent")).repairs().torrent_ext);
+    }
+}
+
 #[cfg(windows)]
 mod imp {
     use std::path::Path;
@@ -145,7 +227,7 @@ mod imp {
     use winreg::RegKey;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
 
-    use super::{HIDDEN_ARG, current_exe};
+    use super::{HIDDEN_ARG, RegistrationState, current_exe};
 
     /// Empêche (ou autorise de nouveau) la mise en veille pendant un transfert actif.
     /// `ES_CONTINUOUS` fait tenir ce réglage jusqu'au prochain appel : pas besoin de le
@@ -323,7 +405,7 @@ mod imp {
     const TORRENT_OPENWITH_KEY: &str = r"Software\Classes\.torrent\OpenWithProgids";
     /// Identifiant de type de fichier (« ProgID ») pour les .torrent : Windows a besoin d'une
     /// clé séparée de l'extension elle-même pour y accrocher l'icône et la commande d'ouverture.
-    const PROG_ID: &str = "PocketTorrent.Torrent";
+    const PROG_ID: &str = super::TORRENT_PROG_ID;
     const PROG_ID_KEY: &str = r"Software\Classes\PocketTorrent.Torrent";
     const PROG_ID_COMMAND_KEY: &str = r"Software\Classes\PocketTorrent.Torrent\shell\open\command";
     const PROG_ID_ICON_KEY: &str = r"Software\Classes\PocketTorrent.Torrent\DefaultIcon";
@@ -450,24 +532,51 @@ mod imp {
             }
         }
 
+        // option « Ouvrir les liens magnet et fichiers .torrent » active : la commande magnet est à
+        // nous. Tout le reste est alors vérifié, pas seulement le magnet : une ancienne version
+        // (« Torrent Cloud ») a pu laisser le magnet en place mais plus rien pour les .torrent.
         let ours = our_command(&exe, "\"%1\"");
-        let magnet_stale = magnet_command().is_some_and(|c| c != ours && is_ours(&c));
-        let caps_stale = hkcu().open_subkey_with_flags(CAPABILITIES_KEY, KEY_READ).is_ok_and(|caps| {
-            caps.get_value::<String, _>("ApplicationName").ok().as_deref() != Some(APP_NAME)
-                || caps.get_value::<String, _>("ApplicationIcon").ok() != Some(our_icon(&exe))
-        });
-        if magnet_stale {
+        let Some(magnet) = magnet_command().filter(|c| is_ours(c)) else { return Ok(()) };
+        let state = RegistrationState {
+            magnet_ok: magnet == ours,
+            caps_ok: hkcu().open_subkey_with_flags(CAPABILITIES_KEY, KEY_READ).is_ok_and(|caps| {
+                caps.get_value::<String, _>("ApplicationName").ok().as_deref() == Some(APP_NAME)
+                    && caps.get_value::<String, _>("ApplicationIcon").ok() == Some(our_icon(&exe))
+            }) && hkcu()
+                .open_subkey_with_flags(REGISTERED_APPS_KEY, KEY_READ)
+                .and_then(|k| k.get_value::<String, _>(REGISTERED_APPS_VALUE))
+                .is_ok_and(|v| v == CAPABILITIES_KEY),
+            prog_id_ok: hkcu()
+                .open_subkey_with_flags(PROG_ID_COMMAND_KEY, KEY_READ)
+                .and_then(|k| k.get_value::<String, _>(""))
+                .is_ok_and(|c| c == ours),
+            torrent_ext: torrent_ext_progid(),
+        };
+        let plan = state.repairs();
+        if plan.is_empty() {
+            return Ok(());
+        }
+        if plan.magnet {
             let (command, _) = hkcu().create_subkey(MAGNET_COMMAND_KEY)?;
             command.set_value("", &ours)?;
             let (icon, _) = hkcu().create_subkey(MAGNET_ICON_KEY)?;
             icon.set_value("", &our_icon(&exe))?;
         }
-        if magnet_stale || caps_stale {
+        if plan.capabilities {
             register_capabilities(&exe)?;
-            write_prog_id(&exe)?;
-            notify_associations_changed();
-            tracing::info!("liens magnet et fichiers .torrent remis sur {}", exe.display());
         }
+        if plan.prog_id {
+            write_prog_id(&exe)?;
+        }
+        if plan.torrent_ext {
+            let (ext, _) = hkcu().create_subkey(TORRENT_EXT_KEY)?;
+            ext.set_value("", &PROG_ID)?;
+        }
+        // toujours proposé dans « Ouvrir avec », même si un autre programme est choisi par défaut
+        let (open_with, _) = hkcu().create_subkey(TORRENT_OPENWITH_KEY)?;
+        open_with.set_value(PROG_ID, &"")?;
+        notify_associations_changed();
+        tracing::info!(?plan, "liens magnet et fichiers .torrent remis sur {}", exe.display());
         Ok(())
     }
 

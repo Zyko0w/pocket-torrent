@@ -37,6 +37,16 @@ fn link_argument(args: &[String]) -> Option<String> {
 }
 
 pub fn run() {
+    // Deuxième lancement (double-clic sur un .torrent, lien magnet) : ce processus, lancé par
+    // l'utilisateur, a le droit de passer au premier plan ; il le cède à la fenêtre déjà ouverte
+    // avant de lui transmettre le lien. Droit valable jusqu'à la prochaine action de l'utilisateur.
+    #[cfg(windows)]
+    // SAFETY: appel Win32 sans pointeur ni état partagé.
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
+            windows_sys::Win32::UI::WindowsAndMessaging::ASFW_ANY,
+        );
+    }
     tauri::Builder::default()
         // un seul Pocket Torrent à la fois : relancer ramène la fenêtre existante
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -166,4 +176,21 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de Pocket Torrent");
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::link_argument;
+
+    /// Arguments passés par Windows : double-clic sur un .torrent, lien magnet, démarrage caché.
+    #[test]
+    fn opened_file_or_magnet_is_found_in_the_arguments() {
+        let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let exe = r"C:\Users\x\AppData\Local\Pocket Torrent\pocket-torrent.exe";
+        let file = r"C:\Users\x\Downloads\Mon film (2026) [1080p].TORRENT";
+        assert_eq!(link_argument(&args(&[exe, file])).as_deref(), Some(file));
+        assert_eq!(link_argument(&args(&[exe, "magnet:?xt=urn:btih:abc"])).as_deref(), Some("magnet:?xt=urn:btih:abc"));
+        assert_eq!(link_argument(&args(&[exe, "--cache"])), None);
+        assert_eq!(link_argument(&args(&[exe])), None);
+    }
 }

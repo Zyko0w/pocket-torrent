@@ -60,7 +60,12 @@ pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
+        // Windows refuse le premier plan à un programme resté en arrière-plan (double-clic sur un
+        // .torrent alors que Pocket Torrent tourne caché) : la fenêtre resterait derrière les
+        // autres. « Toujours au-dessus » un instant la fait passer devant.
+        let _ = window.set_always_on_top(true);
         let _ = window.set_focus();
+        let _ = window.set_always_on_top(false);
     }
 }
 

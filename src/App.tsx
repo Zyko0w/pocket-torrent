@@ -22,6 +22,7 @@ import { ClipboardPrompt } from './components/ClipboardPrompt'
 import { DropZone } from './components/DropZone'
 import { SpeedChart } from './components/SpeedChart'
 import { ShutdownBanner, ShutdownToggle } from './components/PowerControls'
+import { takeLaunchLinks } from './launchLinks'
 
 /** Page affichée : la liste (en cours ou terminés) ou les réglages. */
 type View = 'active' | 'done' | 'settings'
@@ -316,12 +317,18 @@ export default function App () {
 
   // lien magnet ou fichier .torrent reçu au lancement, ou transmis par une autre ouverture de Pocket Torrent
   useEffect(() => {
-    api.takeLaunchLinks().then((links) => { if (links.length) setPrefill(links.join('\n')) }).catch(() => {})
+    const stopTaking = takeLaunchLinks(api.takeLaunchLinks, (links) => {
+      setView('active')
+      setPrefill(links.join('\n'))
+    })
     const unlisten = listen<string>('link-received', (event) => {
       setView('active')
       setPrefill(event.payload)
     })
-    return () => { unlisten.then((stop) => stop()) }
+    return () => {
+      stopTaking()
+      unlisten.then((stop) => stop())
+    }
   }, [])
 
   // catégorie supprimée dans les réglages
