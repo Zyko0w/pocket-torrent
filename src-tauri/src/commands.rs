@@ -17,6 +17,17 @@ fn message(err: anyhow::Error) -> String {
     format!("{err:#}")
 }
 
+/// Fichier d'export choisi dans la fenêtre « Enregistrer » : seulement les extensions prévues
+/// (défense en profondeur : même un script injecté dans l'interface ne pourrait pas déposer un
+/// `.bat` ou un `.lnk` dans le dossier Démarrage). Sans extension, la première est ajoutée.
+fn export_path(path: PathBuf, allowed: &[&str]) -> CommandResult<PathBuf> {
+    match path.extension().and_then(|e| e.to_str()) {
+        None => Ok(path.with_extension(allowed[0])),
+        Some(ext) if allowed.iter().any(|a| a.eq_ignore_ascii_case(ext)) => Ok(path),
+        Some(ext) => Err(format!("extension .{ext} refusée pour un export ({})", allowed.join(", "))),
+    }
+}
+
 #[tauri::command]
 pub async fn overview(state: State<'_, AppState>) -> CommandResult<Overview> {
     Ok(state.manager.overview())
@@ -183,7 +194,7 @@ pub async fn prepare_for_update(state: State<'_, AppState>) -> CommandResult<()>
 
 #[tauri::command]
 pub async fn export_list(state: State<'_, AppState>, path: PathBuf) -> CommandResult<usize> {
-    state.manager.export_list(&path).map_err(message)
+    state.manager.export_list(&export_path(path, &["json"])?).map_err(message)
 }
 
 #[tauri::command]
@@ -380,6 +391,7 @@ pub async fn performance_snapshot(state: State<'_, AppState>) -> CommandResult<c
 
 #[tauri::command]
 pub async fn export_performance_snapshot(state: State<'_, AppState>, path: PathBuf) -> CommandResult<()> {
+    let path = export_path(path, &["json"])?;
     let snapshot = state.manager.performance_snapshot().await;
     let text = serde_json::to_vec_pretty(&snapshot).map_err(|e| e.to_string())?;
     std::fs::write(&path, text).map_err(|e| format!("écriture impossible : {e}"))
@@ -394,10 +406,31 @@ pub async fn read_log(state: State<'_, AppState>, max_lines: usize) -> CommandRe
 
 #[tauri::command]
 pub async fn export_log(state: State<'_, AppState>, path: PathBuf) -> CommandResult<()> {
-    state.manager.export_log(&path).map_err(message)
+    state.manager.export_log(&export_path(path, &["log", "txt"])?).map_err(message)
 }
 
 #[tauri::command]
 pub async fn open_log_folder(state: State<'_, AppState>) -> CommandResult<()> {
     state.manager.open_log_folder().map_err(message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exports_only_write_expected_file_types() {
+        let check = |p: &str| export_path(PathBuf::from(p), &["log", "txt"]);
+        assert_eq!(check(r"C:\x\journal.log").unwrap(), PathBuf::from(r"C:\x\journal.log"));
+        assert_eq!(check(r"C:\x\journal.TXT").unwrap(), PathBuf::from(r"C:\x\journal.TXT"));
+        assert_eq!(check(r"C:\x\journal").unwrap(), PathBuf::from(r"C:\x\journal.log"));
+        for hostile in [
+            r"C:\Users\a\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\x.bat",
+            r"C:\x\raccourci.lnk",
+            r"C:\x\journal.log.exe",
+            r"C:\x\a.ps1",
+        ] {
+            assert!(check(hostile).is_err(), "{hostile}");
+        }
+    }
 }

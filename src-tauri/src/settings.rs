@@ -412,8 +412,19 @@ fn default_download_dir() -> PathBuf {
 const MAX_KBPS: u32 = 4_000_000; // ~4 Go/s, au-delà une limite n'a pas de sens
 
 impl Settings {
+    /// Fichier illisible (coupure de courant, valeur d'une autre version) : une copie
+    /// « settings.json.illisible » est gardée et chaque réglage valide est repris un par un.
+    /// Avant, un seul champ abîmé remettait tout par défaut, VPN obligatoire compris : les
+    /// torrents repartaient sans protection.
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+        let Ok(bytes) = std::fs::read(path) else { return Self::default() };
+        serde_json::from_slice(&bytes).unwrap_or_else(|err| {
+            tracing::error!(
+                "settings.json illisible ({err}) : réglages valides repris, copie dans settings.json.illisible"
+            );
+            let _ = std::fs::copy(path, path.with_extension("json.illisible"));
+            crate::store::salvage(&bytes)
+        })
     }
 
     /// Écriture sûre (fichier temporaire mis sur le disque puis renommé) : une coupure de courant
@@ -679,6 +690,42 @@ mod fixture_tests {
         }
         let actual: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(actual, expected, "réglages par défaut changés : relancer avec UPDATE_FIXTURES=1");
+    }
+}
+
+#[cfg(test)]
+mod load_tests {
+    use super::{Settings, VpnMode};
+
+    /// Réglages abîmés (bac à sable : dossier temporaire dédié) : les valeurs valides restent,
+    /// VPN obligatoire compris, et une copie du fichier est gardée.
+    #[test]
+    fn one_damaged_field_does_not_reset_the_vpn() {
+        let dir = std::env::temp_dir().join(format!("pocket-torrent-sandbox-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        let mut settings = Settings::default();
+        settings.vpn.mode = VpnMode::Wireguard;
+        settings.upload_slots = 7;
+        let mut json = serde_json::to_value(&settings).unwrap();
+        json["torrentPort"] = "pas un port".into();
+        json["limits"] = serde_json::json!([1, 2, 3]);
+        json["vpn"]["proxyPort"] = (-1).into();
+        json["reglageDUneAutreVersion"] = true.into();
+        std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.vpn.mode, VpnMode::Wireguard, "VPN obligatoire perdu");
+        assert_eq!(loaded.upload_slots, 7);
+        assert_eq!(loaded.torrent_port, Settings::default().torrent_port);
+        assert!(dir.join("settings.json.illisible").exists());
+
+        // fichier tronqué ou binaire : réglages par défaut, sans panique
+        for bytes in [&b"{\"vpn\": {\"mode\": \"wire"[..], &[0xff, 0xfe, 0x00], b""] {
+            std::fs::write(&path, bytes).unwrap();
+            let _ = Settings::load(&path);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

@@ -8,6 +8,59 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+/// Lecture d'un fichier JSON abîmé : valeurs par défaut, remplacées par chaque valeur
+/// enregistrée qui reste valide (champ par champ ; pour une liste, élément par élément).
+/// Un seul champ ou un seul téléchargement illisible ne fait plus tout perdre.
+pub fn salvage<T: Default + Serialize + serde::de::DeserializeOwned>(bytes: &[u8]) -> T {
+    use serde_json::Value;
+    fn leaves(defaults: &Value, path: Vec<String>, saved: Value, out: &mut Vec<(Vec<String>, Value)>) {
+        match (defaults, saved) {
+            (Value::Object(defaults), Value::Object(saved)) => {
+                for (key, value) in saved {
+                    let mut path = path.clone();
+                    path.push(key.clone());
+                    match defaults.get(&key) {
+                        Some(default) => leaves(default, path, value, out),
+                        None => out.push((path, value)),
+                    }
+                }
+            }
+            (_, saved) => out.push((path, saved)),
+        }
+    }
+    let valid = |candidate: &Value| serde_json::from_value::<T>(candidate.clone()).is_ok();
+    // le chemin ne traverse que des objets (ceux des valeurs par défaut)
+    let slot = |root: &mut Value, path: &[String], value: Value| {
+        *path.iter().fold(root, |node, key| &mut node[key.as_str()]) = value;
+    };
+    let Ok(saved) = serde_json::from_slice::<Value>(bytes) else { return T::default() };
+    let Ok(mut kept) = serde_json::to_value(T::default()) else { return T::default() };
+    let mut found = Vec::new();
+    leaves(&kept, Vec::new(), saved, &mut found);
+    for (path, value) in found {
+        let mut candidate = kept.clone();
+        slot(&mut candidate, &path, value.clone());
+        if valid(&candidate) {
+            kept = candidate;
+        } else if let Value::Array(items) = value {
+            let mut good = Vec::new();
+            for item in items {
+                good.push(item);
+                let mut candidate = kept.clone();
+                slot(&mut candidate, &path, Value::Array(good.clone()));
+                if !valid(&candidate) {
+                    good.pop();
+                }
+            }
+            slot(&mut kept, &path, Value::Array(good));
+            if !valid(&kept) {
+                slot(&mut kept, &path, Value::Array(Vec::new()));
+            }
+        }
+    }
+    serde_json::from_value(kept).unwrap_or_default()
+}
+
 /// Écrit un fichier sans jamais laisser de version à moitié écrite : fichier temporaire mis sur
 /// le disque, puis renommé. Une coupure de courant (arrêt du PC programmé compris) laisse
 /// l'ancienne version ou la nouvelle, jamais un fichier vide.
@@ -239,14 +292,14 @@ pub struct TrafficTotals {
 
 impl StoreData {
     pub fn load(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
-            Ok(text) => serde_json::from_str(&text).unwrap_or_else(|err| {
-                tracing::error!("jobs.json illisible ({err}), liste repartie de zéro");
-                let _ = std::fs::copy(path, path.with_extension("json.illisible"));
-                Self::default()
-            }),
-            Err(_) => Self::default(),
-        }
+        let Ok(bytes) = std::fs::read(path) else { return Self::default() };
+        serde_json::from_slice(&bytes).unwrap_or_else(|err| {
+            tracing::error!(
+                "jobs.json illisible ({err}) : téléchargements valides repris, copie dans jobs.json.illisible"
+            );
+            let _ = std::fs::copy(path, path.with_extension("json.illisible"));
+            salvage(&bytes)
+        })
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -273,6 +326,44 @@ mod dest_tests {
         assert_eq!(parse("\"local\""), Dest::Local);
         assert_eq!(parse("\"inconnue\""), Dest::Local, "destination inconnue : aucun envoi");
         assert_eq!(serde_json::to_string(&Dest::StorageTo).unwrap(), "\"storageTo\"");
+    }
+}
+
+#[cfg(test)]
+mod salvage_tests {
+    use super::StoreData;
+
+    /// jobs.json abîmé (bac à sable : dossier temporaire dédié) : seuls les éléments illisibles
+    /// sont perdus, une copie du fichier est gardée.
+    #[test]
+    fn one_damaged_download_does_not_lose_the_whole_list() {
+        let dir = std::env::temp_dir().join(format!("pocket-torrent-sandbox-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("jobs.json");
+        let good_direct = |id: &str| {
+            serde_json::json!({
+                "id": id, "link": "https://exemple.org/a.iso", "limitKbps": 0, "name": null, "totalBytes": 0,
+                "receivedBytes": 0, "folder": "C:\\x", "partPath": null, "finalPath": null,
+            })
+        };
+        let json = serde_json::json!({
+            "torrents": { "aaaa": {}, "bbbb": 42, "cccc": {} },
+            "directs": [good_direct("d1"), { "id": [1, 2] }, good_direct("d3")],
+            "totals": { "downloaded": 5, "uploaded": "beaucoup", "since": 1 },
+        });
+        std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+
+        let data = StoreData::load(&path);
+        assert_eq!(data.torrents.keys().collect::<Vec<_>>(), ["aaaa", "cccc"]);
+        assert_eq!(data.directs.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(), ["d1", "d3"]);
+        assert_eq!((data.totals.downloaded, data.totals.uploaded, data.totals.since), (5, 0, 1));
+        assert!(dir.join("jobs.json.illisible").exists());
+
+        for bytes in [&b"{\"torrents\": {\"aa"[..], &[0xff, 0x00], b"[]", b""] {
+            std::fs::write(&path, bytes).unwrap();
+            let _ = StoreData::load(&path);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
