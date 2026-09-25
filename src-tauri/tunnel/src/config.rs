@@ -186,6 +186,66 @@ PersistentKeepalive = 25
         assert!(summary.ipv6);
     }
 
+    /// Fichier piégé (fuzzing par mutation, sans dépendance) : jamais de panique, et une
+    /// configuration acceptée a toujours clé, adresse, pair et point d'accès.
+    #[test]
+    fn hostile_config_files_never_panic() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let pieces: &[&str] = &[
+            "[",
+            "]",
+            "[Peer]",
+            "[Interface]",
+            "=",
+            "/",
+            ",",
+            "#",
+            "\n",
+            "\u{feff}",
+            "é",
+            "\u{202e}",
+            "::",
+            "999",
+            "/200",
+            "/33",
+            "0.0.0.0",
+            "[::1]",
+            "off",
+            "-1",
+            "65536",
+            "PostUp = calc.exe",
+            "Endpoint =",
+            "AllowedIPs =",
+        ];
+        for _ in 0..20_000 {
+            let mut text = SAMPLE.to_owned();
+            for _ in 0..1 + next() % 6 {
+                let at = (next() as usize) % (text.len() + 1);
+                let at = (0..=at).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
+                match next() % 3 {
+                    0 => text.insert_str(at, pieces[(next() as usize) % pieces.len()]),
+                    1 => {
+                        let end = (at + (next() as usize) % 12).min(text.len());
+                        let end = (end..=text.len()).find(|i| text.is_char_boundary(*i)).unwrap_or(text.len());
+                        text.replace_range(at..end, "");
+                    }
+                    _ => text.insert(at, char::from_u32((next() % 0x250) as u32).unwrap_or('x')),
+                }
+            }
+            if let Ok(config) = parse(&text) {
+                assert!(!config.addresses.is_empty() && !config.peers.is_empty(), "{text:?}");
+                assert!(config.peers.iter().all(|p| p.endpoint.is_some() && p.public_key != [0; 32]), "{text:?}");
+                assert!(config.addresses.iter().all(|(ip, p)| *p <= if ip.is_ipv4() { 32 } else { 128 }));
+            }
+        }
+    }
+
     #[test]
     fn rejects_missing_key() {
         assert!(parse("[Interface]\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\nEndpoint = 1.2.3.4:1").is_err());

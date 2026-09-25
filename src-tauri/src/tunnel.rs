@@ -49,6 +49,10 @@ pub fn view() -> TunnelView {
 
 /// Vérifie puis range le fichier .conf dans le Gestionnaire d'identification Windows.
 pub fn import(path: &Path) -> anyhow::Result<Summary> {
+    // taille vérifiée avant la lecture : un fichier de plusieurs Go ne remplit pas la mémoire
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > 2 * MAX_CONFIG_BYTES as u64) {
+        bail!("fichier trop grand pour une configuration WireGuard");
+    }
     let text = std::fs::read_to_string(path).context("fichier illisible")?;
     let text = text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
     if text.len() > MAX_CONFIG_BYTES {
