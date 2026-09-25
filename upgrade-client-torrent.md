@@ -2,7 +2,7 @@
 
 > Document de référence pour auditer, mettre à niveau et sécuriser un client torrent **déjà en production**.
 > Sources : spécifications officielles BEP (bittorrent.org), documentation de libtorrent-rasterbar, qBittorrent, Transmission, Deluge, BiglyBT et rqbit.
-> Dernière mise à jour : 23/09/2026.
+> Dernière mise à jour : 25/09/2026 (Pocket Torrent 0.2.2 et suivantes).
 
 ---
 
@@ -13,7 +13,7 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | Point | Statut | Détail |
 |---|---|---|
 | **§2.2** Mesures de référence | ✅ | Instantané CPU/RAM/débit/pairs à la demande + export JSON (Réglages → Diagnostics) |
-| **§3** Socle protocolaire | ✅ *(voir tableau §3, audit complété le 23/09)* | Quasi complet : extension Fast (BEP 6) et partage partiel (BEP 21) ajoutés, web seeds (BEP 19) aussi ; manque le magnet v2 (`urn:btmh:`) |
+| **§3** Socle protocolaire | ✅ *(voir tableau §3, audit complété le 23/09)* | Quasi complet : extension Fast (BEP 6) et partage partiel (BEP 21) ajoutés, web seeds (BEP 19) aussi ; magnet v2 (`urn:btmh:`) : **25/09** hybrides acceptés (empreinte v1), v2 seul refusé avec un message clair (le moteur ne gère pas BitTorrent v2) |
 | **§4** µTP réglable | ✅ | Désactivé par défaut (module jeune côté moteur), activable dans Réglages → Réseau |
 | **§4.1** Piece picker : pièces déjà entamées | ✅ | Correctif moteur : proposées en priorité **et** un vrai gaspillage corrigé au passage (les chunks déjà reçus d'une pièce interrompue étaient effacés, pas seulement en cas d'échec de somme de contrôle) |
 | **§4.1** Piece picker : rarest-first | ✅ | Correctif moteur : disponibilité de chaque pièce suivie sur les pairs connectés ; dans le fichier prioritaire en cours, la pièce la plus rare d'abord (première/dernière pièce du fichier toujours en tête pour les aperçus). Priorité des fichiers, pièces entamées et streaming inchangés |
@@ -25,20 +25,20 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§4.3** Délais RTT adaptatifs, pipelining adaptatif | ❌ *écarté* | Inutile en pratique : la fenêtre de 128 requêtes × 16 Kio = 2 Mio en vol par pair permet ~20 Mio/s par pair à 100 ms de latence (~7 Mio/s à 300 ms), et on télécharge depuis plusieurs pairs à la fois ; les pairs lents sont déjà relayés par `try_steal` |
 | **§4 / §10.6** Bannissement intelligent | ✅ | Correctif moteur : bannit une IP après plusieurs blocs corrompus, pas dès le premier |
 | **§5** Empêcher la mise en veille | ✅ | Pendant un transfert actif, réglable |
-| **§5** Programme externe à l'ajout/fin | ✅ | Variables `%N` `%F` `%I`, protégé contre l'injection de commande |
-| **§5** Dossiers surveillés | ✅ | Surveillance native (pas de scrutation), fichiers traités déplacés dans `.traités` |
+| **§5** Programme externe à l'ajout/fin | ❌ *retiré (0.2.0)* | Fait puis retiré avec l'onglet Automatisation : plus aucune commande lancée par l'appli |
+| **§5** Dossiers surveillés | ❌ *retiré (0.2.0)* | Fait puis retiré : fonctionnalité jugée inutile |
 | **§5** File d'attente : ignorer les téléchargements lents | ✅ | Seuil configurable |
 | **§5** Planificateur de limites (plages horaires) | ✅ | Heures + jours de la semaine, se combine avec le mode jeu |
 | **§5** Revérification forcée | ✅ | Retiré du moteur puis rajouté depuis les octets déjà en mémoire, sans retélécharger les métadonnées |
 | **§5** Carte des pièces | ✅ | Correctif moteur d'un mot-clé (accesseur interne déjà existant, juste pas exposé) |
 | **§5** Déplacement automatique à la fin / dossier temporaire | ❌ *refusé* | Pas d'API moteur pour déplacer un torrent suivi en direct ; la seule voie (retirer + déplacer + revérifier) touche aux fichiers déjà téléchargés — trop de risque pour la valeur |
-| **§5** Détails : vue trackers | ✅ *(minimale)* | Liste des URLs seulement — librqbit n'expose pas d'état par tracker |
+| **§5** Détails : vue trackers | ✅ | État de chaque tracker (connexion, succès, échec et raison, pairs reçus, prochaine annonce) ; **25/09** : sources et clients (seeders/leechers) rapportés par chaque tracker HTTP et UDP |
 | **§5** Journal consultable et exportable | ✅ | Fichier tournant (7 jours), 300 dernières lignes affichables, export |
-| **§5 / §6.1** Création de torrent avancée | ✅ | Taille de pièce, trackers, **option privée** (correctif moteur, champ figé à `false` avant) |
+| **§5 / §6.1** Création de torrent avancée | ❌ *retirée (0.2.1)* | Faite (taille de pièce, trackers, option privée) puis retirée avec « Partager en torrent » : une commande de moins exposée |
 | **§6.1** BitTorrent v2 / hybride | ❌ *mis de côté* | Rien d'utilisable en amont chez rqbit (juste des fondations) ; on surveille l'issue #546 |
 | **§6.3** Sélection de fichiers dans un magnet (BEP 53) | ✅ *déjà présent* | Fonctionnait déjà nativement dans librqbit, non exploité avant vérification |
 | **§6.2 / §6.3** DHT avancé, holepunch, pont WebTorrent | ❌ *refusé* | Non supporté par le moteur ; le holepunch demanderait du code réseau non testable ici (pas de vrai NAT à disposition) |
-| **§7.1-7.5** Démon/API séparés, REST v2, RSS, plugins, config TOML, Prometheus | ❌ *refusé* | Refonte d'architecture, hors périmètre d'une amélioration incrémentale |
+| **§7.1-7.5** Démon/API séparés, REST v2, plugins, config TOML, Prometheus | ❌ *refusé* | Refonte d'architecture, hors périmètre d'une amélioration incrémentale. **RSS fait depuis** (0.2.1 : flux de séries, filtres, épisodes, voir §7.3) |
 | **§7.6** Serveur de streaming | ✅ | Serveur HTTP local (`127.0.0.1` uniquement), Range géré par bibliothèque, bouton « Lire » + playlist M3U |
 | **§7.6** Priorité automatique aux sous-titres | ❌ *refusé* | librqbit n'a pas de priorité par fichier (inclure/exclure seulement) ; un contournement en deux temps serait fragile face à la pause/sélection manuelle pour un gain marginal (les .srt sont minuscules, ils arrivent vite de toute façon) |
 | **§7.7** Thème clair/sombre | ✅ | Suit le réglage Windows automatiquement |
@@ -46,7 +46,7 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§7.7** Traductions | ❌ *refusé* | Effort continu hors périmètre |
 | **§8** Performances bas niveau | ❌ *refusé* | Dépend de l'intérieur du moteur, rien d'actionnable sans le patcher en profondeur |
 | **§9.1-9.3** VPN, arrêt automatique, chiffrement, vérification d'IP | ✅ *déjà en place* | Avant cette série de sessions |
-| **§9.3** Redirection de port automatique côté VPN | ❌ *refusé* | Spécifique à chaque fournisseur VPN (API propre à ProtonVPN, AirVPN, PIA…), pas généralisable simplement, P2 dans le plan |
+| **§9.3** Redirection de port automatique côté VPN | ✅ *(0.2.0, ProtonVPN)* | NAT-PMP auprès de la passerelle du VPN, renouvelé avant expiration, port d'écoute changé à chaud ; ports système refusés. Les autres fournisseurs (API propres) ne sont pas gérés |
 | **§9.4** Proxy manuel, **§9.5** I2P | ❌ *refusé* | Choix d'architecture (VPN/tunnel seulement) / chantier à part entière |
 | **§9.5** Détection Tor | *N/A* | Pas de réglage de proxy manuel dans l'app : aucun chemin pour router par Tor sans le savoir |
 | **§9.6** Mode confidentialité renforcée | ✅ | Peer ID masqué, UPnP coupé, `yourip` (BEP 10) supprimé (correctif moteur ; **corrigé le 23/09** : ne s'appliquait qu'à la récupération des métadonnées, pas aux pairs du torrent) |
@@ -65,7 +65,7 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§10.3** Profondeur bencode limitée | ✅ | Correctif moteur (`librqbit-bencode`, vendorisée pour l'occasion) : rejette le bencode imbriqué à outrance reçu d'un pair/tracker/DHT (DoS par débordement de pile) |
 | **§10.4** Filtre de fichiers dangereux | ✅ | Extensions dangereuses, « fausses vidéos », RTLO — décochés par défaut, jamais bloqués |
 | **§10.4** Analyse antivirus optionnelle | ✅ | Via `MpCmdRun.exe` de Microsoft Defender (déjà sur Windows, pas de nouvelle dépendance) ; comportement vérifié avec un fichier test EICAR standard avant d'écrire le code ; rapport seulement, rien n'est supprimé automatiquement |
-| **§10.5** Bac à sable système, build reproductible/SBOM | ❌ *refusé* | Infrastructure de build/CI, pas du code applicatif |
+| **§10.5** Bac à sable système, build reproductible/SBOM | ⚠️ *en partie* | CI GitHub Actions en place (types, tests interface/Rust/tunnel/trackers/µTP, clippy strict, `npm audit`, `cargo audit`) ; bac à sable système, build reproductible et SBOM non faits |
 | **§10.6** Signature de torrents (BEP 35) | ❌ *refusé* | Brouillon de spécification, P2 explicite dans le plan |
 
 Détail des correctifs appliqués au moteur vendorisé : voir `src-tauri/vendor/PATCHES.md`.
@@ -225,10 +225,10 @@ Détail des correctifs appliqués au moteur vendorisé : voir `src-tauri/vendor/
 | **Planificateur** de limites (plages horaires) | P1 | ✅ | Heures + jours de la semaine, se combine avec le mode jeu. |
 | Objectifs de ratio et de temps de partage, avec action à la clé | P0 | ✅ | Pause ou arrêt du partage, déjà en place. |
 | Catégories, étiquettes, chemin de sauvegarde par catégorie | P1 | ✅ | Déjà en place. |
-| Dossiers surveillés | P1 | ✅ | Surveillance native (`ReadDirectoryChangesW` via la crate `notify`), pas de scrutation. |
+| Dossiers surveillés | P1 | ❌ | Faits puis retirés en 0.2.0 (voir §0). |
 | Déplacement automatique à la fin, dossier temporaire | P1 | ❌ | Refusé après étude : pas d'API moteur pour déplacer un torrent suivi en direct, la seule voie (retirer + déplacer + revérifier) touche aux fichiers déjà téléchargés. |
-| Programme externe à l'ajout ou à la fin | P1 | ✅ | `%N` `%F` `%I`, protégé contre l'injection de commande. |
-| Création de torrents (v1, v2, hybride) | P1 | ⚠️ | v1 avec taille de pièce, trackers et **option privée** ; v2/hybride et web seeds absents (§6.1, §3). |
+| Programme externe à l'ajout ou à la fin | P1 | ❌ | Fait puis retiré en 0.2.0 (voir §0). |
+| Création de torrents (v1, v2, hybride) | P1 | ❌ | v1 faite puis retirée en 0.2.1 (voir §0). |
 | Revérification forcée | P0 | ✅ | Retiré du moteur puis rajouté depuis les octets déjà en mémoire, sans retélécharger les métadonnées. |
 | Détails : pairs, trackers, fichiers, carte des pièces | P0 | ✅ | Pairs ✅, trackers ✅ (liste seule, pas d'état), fichiers ✅, carte des pièces ✅ (correctif moteur d'un mot-clé). |
 | Journal consultable et exportable | P1 | ✅ | Fichier tournant, 300 dernières lignes, export. |
@@ -303,7 +303,7 @@ Si le client est un monolithe, c'est **le chantier le plus rentable** : il perme
 
 ### 7.3 Automatisation
 
-- [ ] **RSS** : filtres regex et « contient / ne contient pas », détection des épisodes (S01E02), mémorisation des éléments déjà vus, intervalle par flux.
+- [x] **RSS** (0.2.1) : filtres « contient / ne contient pas », détection des épisodes (S01E02, 1x02) sans doublon de qualité, mémorisation des éléments déjà vus, première lecture sans rien télécharger, intervalle global (5 min à 24 h). Pas de regex. Sécurité : liens vers le réseau local refusés, .torrent téléchargés par un client limité à Internet (contre le DNS rebinding, **25/09**).
 - [ ] **Recherche par greffons** (sur le modèle des plugins de recherche de qBittorrent), dans un bac à sable.
 - [ ] **Système de greffons** : **WASM** de préférence (isolé, multi-langage, sûr), ou Lua. Points d'accroche : ajout d'un torrent, fin d'un téléchargement, changement d'état, minuterie.
 - [ ] **Règles automatiques** : « si le tracker est X, alors catégorie Y, limite Z et ratio R ».
@@ -335,7 +335,7 @@ Si le client est un monolithe, c'est **le chantier le plus rentable** : il perme
 - [x] Thème sombre et clair qui suit le système.
 - [ ] Traductions (Weblate, Crowdin) — hors périmètre, effort continu.
 - [ ] Accessibilité : lecteurs d'écran, navigation complète au clavier, contrastes suffisants — **audit statique fait (23/09/2026)** : tous les boutons et champs ont un nom accessible, focus visible partout, `prefers-reduced-motion` respecté, menus au clavier, `<dialog>` modaux, toasts annoncés (`role=status`). Corrigé : contrastes du thème clair (succès 2,87→6,21:1, info 3,57→5,17:1, avertissement et erreur remontés au-dessus de 4,5:1) et onglets « En cours / Terminés » (flèches, Début/Fin, un seul arrêt de tabulation, `aria-controls`). Reste à faire : un passage réel au lecteur d'écran (NVDA ou Narrateur).
-- [ ] Interface web **adaptée au mobile** ou application progressive (PWA) — non applicable : Torrent Cloud est une appli de bureau, pas d'interface web.
+- [ ] Interface web **adaptée au mobile** ou application progressive (PWA) — non applicable : Pocket Torrent est une appli de bureau, pas d'interface web.
 
 ---
 
@@ -380,7 +380,7 @@ Si le client est un monolithe, c'est **le chantier le plus rentable** : il perme
 | Détection de l'interface VPN | P1 | Liste des interfaces avec leur nom, avertissement si l'interface par défaut est choisie alors qu'un VPN est détecté. |
 | **Arrêt d'urgence intégré** | P1 | Mise en pause de tous les torrents si l'IP publique ou l'interface change. |
 | Vérification de l'IP publique | P1 | Afficher l'IP vue de l'extérieur et alerter si elle correspond à l'IP du FAI (liste d'adresses de référence configurable). |
-| **Redirection de port automatique** | P2 | Intégration de NAT-PMP côté VPN (ProtonVPN), ou d'une API fournisseur (AirVPN, PIA). Mise à jour du port d'écoute à chaud. Sans redirection de port, on est injoignable et les débits baissent. |
+| **Redirection de port automatique** | P2 | ✅ NAT-PMP côté VPN (ProtonVPN) fait en 0.2.0, port d'écoute mis à jour à chaud. API fournisseur (AirVPN, PIA) non faites. |
 | Blocage d'IPv6 hors tunnel | P1 | Option « IPv6 seulement si le VPN le route ». |
 | DNS | P1 | Les requêtes DNS des trackers passent par l'interface choisie, ou par DNS-over-HTTPS. |
 | **Documentation Docker et gluetun** | P1 | Exemple `docker-compose` fourni : le client n'a accès qu'au réseau du VPN. |
@@ -464,7 +464,7 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 
 - [x] Ne **jamais** tourner en administrateur ou root — confirmé : pas de manifeste `requestedExecutionLevel` (donc `asInvoker` par défaut), permissions Tauri minimales (`src-tauri/capabilities/default.json`). Seule l'**installation** du service WireGuard déclenche un UAC ponctuel (`tunnel.rs`), comme le client WireGuard officiel — pas de mode service dédié.
 - [ ] Bac à sable : AppArmor, SELinux, Flatpak, profil seccomp, AppContainer sous Windows — non traité.
-- [x] Identifiants stockés dans le **trousseau du système**, jamais en clair — confirmé : `secrets.rs` range les clés R2 et la config WireGuard (qui contient la clé privée du tunnel) dans le Gestionnaire d'identification Windows (`CredWriteW`/`CredReadW`, `CRED_PERSIST_LOCAL_MACHINE`). Pas de passkeys de tracker privé ni de mot de passe de proxy dans ce client (aucune des deux fonctions n'existe, §9.4).
+- [x] Identifiants stockés dans le **trousseau du système**, jamais en clair — confirmé : `secrets.rs` range les jetons storage.to et la config WireGuard (qui contient la clé privée du tunnel) dans le Gestionnaire d'identification Windows (`CredWriteW`/`CredReadW`, `CRED_PERSIST_LOCAL_MACHINE`). Pas de passkeys de tracker privé ni de mot de passe de proxy dans ce client (aucune des deux fonctions n'existe, §9.4).
 - [x] Passkeys **masquées dans les journaux** et les exports — audité et corrigé (23/09/2026) : le journal écrivait les erreurs réseau avec l'URL complète (jetons des liens directs, signatures R2, et potentiellement passkeys de trackers). Un filtre (`logging.rs`) masque maintenant paramètres d'URL, identifiants `user:pass@`, segments de chemin de type passkey et liens magnet, à l'écriture comme à l'affichage et à l'export. L'instantané de performances ne contient que des chiffres.
 - [ ] Construction reproductible et SBOM publiés.
 
@@ -543,12 +543,12 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 
 ### Étape 1 : sécurité et socle (P0)
 - [x] Audit de la phase 0 et mesures de référence — instantané de performance à la demande (§2.2), plus l'audit complet de ce document.
-- [ ] Interface web et API : pas d'identifiants par défaut, écoute locale, CSRF, vérification de `Host` — **non applicable**, Torrent Cloud n'expose ni interface web ni API (client de bureau, communication Tauri interne seulement).
+- [ ] Interface web et API : pas d'identifiants par défaut, écoute locale, CSRF, vérification de `Host` — **non applicable**, Pocket Torrent n'expose ni interface web ni API (client de bureau, communication Tauri interne seulement).
 - [x] Vérification TLS partout (déjà en place). [x] Mises à jour signées — fait en 0.1.1 (§10.2).
 - [x] Fuzzing du parseur bencode et des messages réseau — fait (§10.3), 2 failles corrigées. [x] Protection contre la traversée de chemin — déjà en place (`safe_component`, voir `PATCHES.md`). [x] Profondeur bencode limitée — ajoutée (`librqbit-bencode`, voir `PATCHES.md`).
 - [x] **Liaison à une interface réseau** (VPN) avec arrêt total si l'interface tombe — déjà en place.
 - [x] Filtre d'extensions dangereuses — fait (§10.4).
-- [x] Combler les manques du tableau §3 — tous les statuts vérifiés (23/09/2026) ; gaps restants : magnet v2 (web seeds, upload_only et extension Fast ajoutés depuis par correctifs moteur).
+- [x] Combler les manques du tableau §3 — tous les statuts vérifiés (23/09/2026) ; magnet v2 : hybrides acceptés, v2 seul refusé proprement (25/09) ; web seeds, upload_only et extension Fast ajoutés par correctifs moteur.
 
 ### Étape 2 : modernisation (P1)
 - [ ] Migration vers libtorrent 2.x ou implémentation de **v2 et hybride** — mis de côté, rien d'utilisable en amont (§6.1).
@@ -556,13 +556,13 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 - [ ] Configuration TOML versionnée, variables d'environnement, profils — refusé, casserait la promesse de migration du §12 si fait sans precaution.
 - [x] Mode confidentialité renforcée (fait, §9.6). [ ] Proxy sans fuite — pas de proxy manuel dans ce client (§9.4). [ ] Avertissement Tor — non applicable (§9.5).
 - [ ] BEP 42, BEP 55 — refusés (non supporté par librqbit / non testable sans vrai NAT). [x] BEP 53 (sélection de fichiers dans un magnet) — déjà présent nativement dans librqbit.
-- [ ] RSS avancé, règles automatiques, webhooks — refusé, hors périmètre incrémental.
+- [x] RSS (0.2.1, voir §7.3). [ ] Règles regex, webhooks — refusés, hors périmètre incrémental.
 - [ ] Métriques Prometheus, journaux JSON — refusé (journal texte lisible fait à la place, §5) ; image Docker — non applicable, client de bureau.
 - [x] Piece picker : priorité aux pièces déjà entamées, priorité par fichier réglable (§4.1) — faits, avec un vrai gaspillage corrigé au passage. [x] Rarest-first et choking réel (§4.1/§4.2) — faits depuis par correctifs moteur (voir `vendor/PATCHES.md`).
 
 ### Étape 3 : performances (P1)
-- [ ] Entrées-sorties asynchrones (io_uring, IOCP), calcul d'empreintes multi-thread — dépend de l'intérieur de librqbit, non exploré.
-- [ ] Reprise à la demande, état dans SQLite — non traité (JSON conservé).
+- [x] Calcul d'empreintes : lecture et calcul en parallèle pendant la vérification (**25/09**, +24 % mesuré, plus sur SSD ; `vendor/PATCHES.md`). [ ] Entrées-sorties asynchrones (IOCP) — non fait : cœur du stockage du moteur, gain incertain une fois la lecture recouverte par le calcul.
+- [ ] Reprise à la demande, état dans SQLite — **jugé inutile (25/09)** : le moteur garde déjà les pièces de chaque torrent dans un fichier à part, projeté en mémoire, et `jobs.json` n'est réécrit qu'après une action (jamais en boucle). SQLite ajouterait une dépendance native sans gain mesurable.
 - [ ] Interface web virtualisée, diffusion des seules différences — non applicable, pas d'interface web.
 
 #### Audit du 24/09/2026 (bugs, sécurité, performances)
@@ -593,7 +593,7 @@ C'est là que les incidents réels se produisent. Ce sont souvent des P0.
 - [ ] Pont WebTorrent (WebRTC) — refusé, faible intérêt pour un client de bureau Windows.
 - [ ] Greffons WASM — refusé, hors périmètre incrémental.
 - [ ] Torrents modifiables (BEP 46), déduplication v2 entre torrents — refusé, non supporté par librqbit.
-- [ ] Redirection de port automatique côté VPN — refusé, spécifique à chaque fournisseur VPN, pas généralisable simplement.
+- [x] Redirection de port automatique côté VPN — NAT-PMP (ProtonVPN) en 0.2.0 ; API des autres fournisseurs non faites.
 - [x] Serveur de streaming — fait pour l'essentiel (§7.6), sans les délais par pièce ni la priorité aux sous-titres.
 - [ ] Application mobile — non applicable, client de bureau Windows.
 

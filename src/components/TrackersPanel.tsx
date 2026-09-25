@@ -30,7 +30,7 @@ function details (tracker: Tracker, now: number): string {
   return parts.join(' · ')
 }
 
-/** Trackers d'un torrent et état de leurs annonces (registre du moteur, voir engine.rs::trackers). */
+/** Trackers d'un torrent et état de leurs annonces (registre du moteur, voir engine/views.rs, Engine::trackers). */
 export function TrackersPanel ({ jobId }: { jobId: string }) {
   const toast = useToast()
   const [trackers, setTrackers] = useState<Tracker[] | null>(null)

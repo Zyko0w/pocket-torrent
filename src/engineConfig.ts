@@ -1,5 +1,5 @@
 // Réglages dont dépend le moteur torrent, en valeurs effectives : les changer le redémarre
-// (téléchargements coupés quelques secondes). Même règle que `EngineConfig` dans engine.rs.
+// (téléchargements coupés quelques secondes). Même règle que `EngineConfig` dans engine/config.rs.
 import type { Settings } from './api'
 
 function engineKey (s: Settings) {

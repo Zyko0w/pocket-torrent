@@ -18,7 +18,7 @@ src-tauri/tunnel) et `npm test`.
 ## Vérifié, résiste
 
 - **Serveur de streaming** (`stream.rs`, test `stream::pentest`) : sans jeton, jeton faux ou tronqué, `Host` étranger (DNS rebinding), autre téléchargement, index hors limites, `..` encodé ou non → 404. Lecture partielle (`Range`) correcte.
-- **Torrents piégés** (`engine::sandbox_tests::hostile_torrents_cannot_write_outside_the_download_folder`) : `..`, séparateurs dans un nom et nom de torrent `..` refusés ; `C:`, `D:evil`, flux `a:b`, `CON`, `nul.txt`, `COM1.log`, points et espaces finaux neutralisés ; aucune écriture hors du dossier de téléchargement.
+- **Torrents piégés** (`engine::tests::sandbox_tests::hostile_torrents_cannot_write_outside_the_download_folder`) : `..`, séparateurs dans un nom et nom de torrent `..` refusés ; `C:`, `D:evil`, flux `a:b`, `CON`, `nul.txt`, `COM1.log`, points et espaces finaux neutralisés ; aucune écriture hors du dossier de téléchargement.
 - **Service du tunnel** : canal réservé à SYSTEM, aux administrateurs et au compte installateur, clients distants refusés, première instance exclusive, requête limitée à 64 Ko ; scripts `PreUp`/`PostUp` des .conf ignorés. Fichier de résultat du programme lancé en administrateur créé en `create_new` (un lien placé d'avance ne détourne pas l'écriture).
 - **Secrets** : clés R2 et configuration WireGuard dans le gestionnaire d'identification Windows ; secrets masqués dans le journal (test `logging::tests`).
 - **Interface** : aucune insertion de HTML brut (`dangerouslySetInnerHTML`, `innerHTML`, `eval`) ; CSP stricte (`script-src 'self'`, aucun cadre) ; permissions Tauri minimales.
