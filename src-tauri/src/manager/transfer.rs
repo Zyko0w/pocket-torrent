@@ -13,6 +13,15 @@ const VERSION: u32 = 1;
 /// Plafond du fichier importé (des milliers de .torrent tiennent largement dedans).
 const MAX_IMPORT_BYTES: u64 = 512 * 1024 * 1024;
 
+/// Lien d'une liste importée : magnet ou adresse web seulement. Une liste peut venir de
+/// n'importe qui ; un chemin de fichier y serait ouvert par l'appli, et un chemin réseau
+/// (« \\serveur\partage\x.torrent ») ferait envoyer par Windows l'empreinte du mot de passe
+/// de la session au serveur désigné (connexion SMB automatique).
+fn importable_link(link: &str) -> bool {
+    let link = link.trim();
+    link.get(..7).is_some_and(|p| p.eq_ignore_ascii_case("magnet:")) || direct::is_http_url(link)
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListFile {
@@ -184,7 +193,11 @@ impl Manager {
                     };
                     (saved, hash)
                 }
-                (None, Some(link)) => (link.clone(), add::magnet_hash(link)),
+                (None, Some(link)) if importable_link(link) => (link.clone(), add::magnet_hash(link)),
+                (None, Some(_)) => {
+                    fail(&mut report, &name, anyhow!("lien refusé (magnet ou http(s) seulement)"));
+                    continue;
+                }
                 (None, None) => continue,
             };
             if hash.as_deref().is_some_and(|h| self.is_listed(h)) {
@@ -214,6 +227,10 @@ impl Manager {
                 ..Default::default()
             };
             let name = direct.name.clone().unwrap_or_else(|| direct.link.clone());
+            if !importable_link(&direct.link) {
+                fail(&mut report, &name, anyhow!("lien refusé (http(s) seulement)"));
+                continue;
+            }
             match self.add_link(&direct.link, &options, &settings).await {
                 Ok(()) => report.added += 1,
                 Err(err) => fail(&mut report, &name, err),
@@ -233,6 +250,24 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_lists_cannot_point_to_files_or_network_shares() {
+        for link in [
+            r"\\attaquant.example\partage\x.torrent",
+            r"\\?\UNC\attaquant.example\partage\x.torrent",
+            "//attaquant.example/partage/x.torrent",
+            r"C:\Users\moi\Documents\secret.torrent",
+            "file://attaquant.example/partage/x.torrent",
+            "ftp://attaquant.example/x.torrent",
+            "",
+        ] {
+            assert!(!importable_link(link), "{link}");
+        }
+        assert!(importable_link("magnet:?xt=urn:btih:e8812d0e9b24a9a82a1376d50f2b786ee6ea797a"));
+        assert!(importable_link("https://site.example/x.torrent"));
+        assert!(importable_link("http://site.example/film.mkv"));
+    }
 
     #[test]
     fn list_file_round_trip() {
