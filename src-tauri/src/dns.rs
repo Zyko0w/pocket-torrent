@@ -15,6 +15,8 @@ use parking_lot::Mutex;
 /// Serveurs DoH joignables par IP (certificats valables pour ces adresses).
 const SERVERS: &[&str] = &["https://1.1.1.1/dns-query", "https://9.9.9.9/dns-query", "https://8.8.8.8/dns-query"];
 const TYPE_A: u16 = 1;
+/// Noms gardés en cache au plus.
+const MAX_CACHED_NAMES: usize = 4096;
 const TYPE_AAAA: u16 = 28;
 
 /// Autorités de certification intégrées (Mozilla) : pas de vérification de révocation en ligne par Windows,
@@ -84,7 +86,17 @@ impl Resolver {
         match result {
             Ok((ips, ttl)) => {
                 let ttl = Duration::from_secs(u64::from(ttl).clamp(30, 600));
-                self.cache.lock().insert(host, (Instant::now() + ttl, ips.clone()));
+                let mut cache = self.cache.lock();
+                if cache.len() >= MAX_CACHED_NAMES {
+                    // noms expirés retirés ; s'il en reste trop, tout est oublié (rare : il faut
+                    // des milliers de noms différents en dix minutes)
+                    let now = Instant::now();
+                    cache.retain(|_, (expires, _)| *expires > now);
+                    if cache.len() >= MAX_CACHED_NAMES {
+                        cache.clear();
+                    }
+                }
+                cache.insert(host, (Instant::now() + ttl, ips.clone()));
                 Ok(ips)
             }
             Err(err) if self.mode == Mode::Free => {

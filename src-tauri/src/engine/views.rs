@@ -334,7 +334,9 @@ impl Engine {
         } else {
             EXTRA_TRACKERS.iter().map(|t| (*t).to_owned()).collect()
         };
-        for url in torrent.shared().trackers.iter().map(|t| t.to_string()).chain(extra) {
+        // même plafond que les annonces : un .torrent piégé peut en lister des milliers
+        let listed = torrent.shared().trackers.iter().map(|t| t.to_string()).chain(extra);
+        for url in listed.take(librqbit_tracker_comms::MAX_TRACKERS_PER_TORRENT) {
             if !views.iter().any(|v| v.url == url) {
                 views.push(TrackerView {
                     url,

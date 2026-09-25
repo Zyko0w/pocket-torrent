@@ -93,6 +93,11 @@ impl TorrentStatsProvider for () {
 
 type Sender = tokio::sync::mpsc::Sender<SocketAddr>;
 
+/// Pocket Torrent : trackers contactés au plus par torrent (les vrais torrents en ont quelques
+/// dizaines). Un .torrent piégé en listant des dizaines de milliers faisait lancer autant
+/// d'annonces et de résolutions DNS.
+pub const MAX_TRACKERS_PER_TORRENT: usize = 100;
+
 /// Taille maximale d'une réponse de tracker HTTP (quelques Kio en pratique, même avec des
 /// centaines de pairs).
 const MAX_HTTP_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
@@ -179,12 +184,20 @@ impl TrackerComms {
     ) -> Option<BoxStream<'static, SocketAddr>> {
         let https_only = HTTPS_ONLY.load(std::sync::atomic::Ordering::Relaxed);
         let status = crate::status::StatusOwner::new(info_hash);
+        // trackers écartés affichés « ignoré » dans l'appli, dans la même limite que les autres
+        let skipped_shown = std::cell::Cell::new(0usize);
+        let skip = |url: &Url, reason: &str| {
+            if skipped_shown.get() < MAX_TRACKERS_PER_TORRENT {
+                skipped_shown.set(skipped_shown.get() + 1);
+                status.skipped(url.as_str(), reason);
+            }
+        };
         let trackers = trackers
             .into_iter()
             .filter(|t| {
                 let keep = !https_only || t.scheme() == "https";
                 if !keep {
-                    status.skipped(t.as_str(), "ignoré : mode discret (trackers HTTPS seulement)");
+                    skip(t, "ignoré : mode discret (trackers HTTPS seulement)");
                 }
                 keep
             })
@@ -193,10 +206,11 @@ impl TrackerComms {
                 "udp" => Some(SupportedTracker::Udp(t)),
                 _ => {
                     debug!("unsupported tracker URL: {}", t);
-                    status.skipped(t.as_str(), "type de tracker non pris en charge");
+                    skip(&t, "type de tracker non pris en charge");
                     None
                 }
             })
+            .take(MAX_TRACKERS_PER_TORRENT)
             .collect::<Vec<_>>();
         if trackers.is_empty() {
             debug!(?info_hash, "trackers list is empty");
@@ -290,7 +304,8 @@ impl TrackerComms {
                 )
                 .notify(|err, retry_in| {
                     debug!(?retry_in, "error calling tracker: {err:#}");
-                    self.status.failure(tracker_url.as_str(), &format!("{err:#}"), Some(retry_in));
+                    self.status
+                        .failure(tracker_url.as_str(), &format!("{err:#}"), Some(retry_in));
                 })
                 .await
                 .context("this shouldn't fail")?;
@@ -416,7 +431,8 @@ impl TrackerComms {
             )
             .notify(|err, retry| {
                 debug!(retry_in=?retry, "error resolving tracker: {err:#}");
-                self.status.failure(url.as_str(), &format!("{err:#}"), Some(retry));
+                self.status
+                    .failure(url.as_str(), &format!("{err:#}"), Some(retry));
             })
             .await
             .context("this shouldn't happen: failed resolving tracker addrs")?;
@@ -436,7 +452,8 @@ impl TrackerComms {
                         }
                         Err(err) => {
                             let retry = sleep_interval.unwrap_or(Duration::from_secs(60));
-                            self.status.failure(url.as_str(), &format!("{err:#}"), Some(retry));
+                            self.status
+                                .failure(url.as_str(), &format!("{err:#}"), Some(retry));
                             sleep_interval = Some(retry)
                         }
                     }
@@ -545,7 +562,9 @@ mod tests {
                 tokio::spawn(async move {
                     let mut request = [0u8; 4096];
                     let _ = socket.read(&mut request).await;
-                    let _ = socket.write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n").await;
+                    let _ = socket
+                        .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
+                        .await;
                     for _ in 0..repeat {
                         if socket.write_all(body).await.is_err() {
                             return;
@@ -575,13 +594,52 @@ mod tests {
 
     #[tokio::test]
     async fn http_announce_reports_the_swarm() {
-        let url = fake_tracker(b"d8:completei40e10:incompletei3e8:intervali1800e5:peers6:\x7f\x00\x00\x01\x1a\xe1e", 1).await;
+        let url = fake_tracker(
+            b"d8:completei40e10:incompletei3e8:intervali1800e5:peers6:\x7f\x00\x00\x01\x1a\xe1e",
+            1,
+        )
+        .await;
         let hash = Id20::new([3; 20]);
         let (comms, mut rx) = comms(hash);
         comms.tracker_one_request_http(&url, None).await.unwrap();
         assert_eq!(rx.recv().await.unwrap(), "127.0.0.1:6881".parse().unwrap());
         let status = crate::status::tracker_statuses(&hash);
-        assert_eq!(status[0].swarm, Some(crate::status::Swarm { seeders: 40, leechers: 3 }));
+        assert_eq!(
+            status[0].swarm,
+            Some(crate::status::Swarm {
+                seeders: 40,
+                leechers: 3
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn trackers_per_torrent_are_bounded() {
+        let hash = Id20::new([5; 20]);
+        let trackers: HashSet<Url> = (0..5000)
+            .map(|i| Url::parse(&format!("wss://t{i}.example/announce")).unwrap())
+            .chain(
+                (0..5000)
+                    .map(|i| Url::parse(&format!("udp://t{i}.example:1337/announce")).unwrap()),
+            )
+            .collect();
+        let udp = UdpTrackerClient::new(Default::default(), None)
+            .await
+            .unwrap();
+        let stream = TrackerComms::start(
+            hash,
+            Id20::new([6; 20]),
+            trackers,
+            Box::new(()),
+            None,
+            Arc::new(std::sync::atomic::AtomicU16::new(6881)),
+            reqwest::Client::new(),
+            udp,
+        );
+        assert!(stream.is_some());
+        // types inconnus affichés « ignoré », dans la même limite (pas des milliers d'entrées)
+        let shown = crate::status::tracker_statuses(&hash).len();
+        assert!(shown > 0 && shown <= MAX_TRACKERS_PER_TORRENT, "{shown}");
     }
 
     #[tokio::test]
@@ -589,7 +647,10 @@ mod tests {
         // 64 Mio envoyés (au-delà du plafond de 4 Mio) : la réponse est abandonnée
         let url = fake_tracker(&[b'x'; 64 * 1024], 1024).await;
         let (comms, _rx) = comms(Id20::new([4; 20]));
-        let err = comms.tracker_one_request_http(&url, None).await.unwrap_err();
+        let err = comms
+            .tracker_one_request_http(&url, None)
+            .await
+            .unwrap_err();
         assert!(format!("{err:#}").contains("too large"), "{err:#}");
     }
 }
