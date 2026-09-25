@@ -99,7 +99,7 @@ flux RSS, storage.to (voir section précédente), retrait de la création de tor
 
 ## Risque résiduel (documenté)
 
-- Flux RSS : un nom de domaine public qui se résout vers une adresse locale (rebinding DNS) n'est pas bloqué par la vérification du lien, faite sur l'adresse écrite. Portée limitée à des requêtes GET de téléchargement de `.torrent`, sur un flux que l'utilisateur a choisi d'ajouter.
+- ~~Flux RSS : un nom de domaine public qui se résout vers une adresse locale (rebinding DNS) n'est pas bloqué par la vérification du lien, faite sur l'adresse écrite.~~ **Corrigé le 25/09** : les .torrent d'un flux sont téléchargés par un client limité à Internet (adresses locales retirées après résolution, redirections contrôlées), sauf les liens d'un flux lui-même local (Jackett / Prowlarr sur ce PC). Test : `feeds::tests::torrent_of_a_public_name_resolving_to_the_local_network_is_refused` (contre-test inclus : le client ordinaire atteint bien le serveur local).
 
 ## Optimisation et refactoring
 

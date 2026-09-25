@@ -4,7 +4,7 @@
 ; des raccourcis et une fiche de désinstallation sous ce nom. Une fois Pocket Torrent installé
 ; (mise à jour comprise), l'ancienne installation est retirée pour ne pas laisser deux applications.
 ; Les données (liste, réglages, reprise des téléchargements) sont ailleurs, dans
-; %APPDATA%\com.nans.torrentcloud, et ne sont pas touchées : Pocket Torrent les reprend telles quelles.
+; %APPDATA%\app.pocket.torrent, et ne sont pas touchées : Pocket Torrent les reprend telles quelles.
 ; Le démarrage avec Windows et les liens magnet sont remis sur le nouvel exe par l'application
 ; elle-même à son premier lancement (system::refresh_registration).
 !macro NSIS_HOOK_POSTINSTALL

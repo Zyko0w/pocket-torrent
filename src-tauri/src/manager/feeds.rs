@@ -195,7 +195,14 @@ impl Manager {
                 tracing::warn!("flux RSS « {} » : lien vers le réseau local refusé pour « {} »", feed.name, item.title);
                 continue;
             }
-            match self.add_link(&item.link, &options, settings).await {
+            let link = match self.feed_link(feed, &item.link, &item.title).await {
+                Ok(link) => link,
+                Err(err) => {
+                    tracing::warn!("flux RSS « {} » : « {} » non ajouté : {err:#}", feed.name, item.title);
+                    continue;
+                }
+            };
+            match self.add_link(&link, &options, settings).await {
                 Ok(()) => added.push(item.title.clone()),
                 // déjà là (ajouté à la main, ou par un autre flux) : l'épisode compte comme récupéré
                 Err(err) if format!("{err}").contains("déjà dans la liste") => {}
@@ -214,6 +221,18 @@ impl Manager {
             self.save_now();
         }
         Ok(added)
+    }
+
+    /// Lien à ajouter pour un élément : le magnet tel quel ; un .torrent venu d'Internet est
+    /// téléchargé ici par le client limité à Internet (adresse réellement jointe contrôlée,
+    /// redirections comprises) puis ajouté comme un fichier déposé.
+    async fn feed_link(&self, feed: &RssFeed, link: &str, title: &str) -> anyhow::Result<String> {
+        if link.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("magnet:?")) || !rss::needs_public_only(&feed.url, link)
+        {
+            return Ok(link.to_owned());
+        }
+        let bytes = download_torrent(&self.network().public_client(), link).await?;
+        Ok(self.save_dropped_torrent(title, &bytes)?.to_string_lossy().into_owned())
     }
 
     /// Télécharge et lit un flux par le client réseau des téléchargements (VPN compris).
@@ -306,6 +325,29 @@ pub(super) async fn fetch(client: &reqwest::Client, url: &str) -> anyhow::Result
     rss::parse_feed(&String::from_utf8_lossy(&body))
 }
 
+/// Télécharge un .torrent (100 Mio au plus, comme le moteur).
+async fn download_torrent(client: &reqwest::Client, url: &str) -> anyhow::Result<Vec<u8>> {
+    let mut response = client
+        .get(url)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|err| anyhow!("fichier .torrent injoignable : {}", err.without_url()))?;
+    if !response.status().is_success() {
+        bail!("le serveur du .torrent a répondu HTTP {}", response.status());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) =
+        response.chunk().await.map_err(|err| anyhow!("lecture du .torrent interrompue : {}", err.without_url()))?
+    {
+        if body.len() + chunk.len() > librqbit::MAX_TORRENT_FILE_BYTES {
+            bail!("fichier .torrent trop gros");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,5 +426,32 @@ mod tests {
         for url in ["file:///C:/Windows/win.ini", "ftp://site.example/rss", "javascript:alert(1)", "pas une adresse"] {
             assert!(fetch(&client, url).await.is_err(), "{url}");
         }
+    }
+
+    /// Résolveur de test : un nom public qui pointe vers ce PC (« DNS rebinding »).
+    struct Rebinding;
+    impl reqwest::dns::Resolve for Rebinding {
+        fn resolve(&self, _name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            Box::pin(async {
+                let addrs: reqwest::dns::Addrs =
+                    Box::new(std::iter::once(std::net::SocketAddr::from(([127, 0, 0, 1], 0))));
+                Ok(addrs)
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn torrent_of_a_public_name_resolving_to_the_local_network_is_refused() {
+        let local = fake_feed(b"d4:infod4:name1:xee".to_vec()).await;
+        let port = url::Url::parse(&local).unwrap().port().unwrap();
+        let rebound = format!("http://tracker.example:{port}/rss");
+        // client ordinaire : la requête atteint bien le serveur local (le danger existe)
+        let plain = reqwest::Client::builder().dns_resolver(Arc::new(Rebinding)).build().unwrap();
+        assert!(download_torrent(&plain, &rebound).await.is_ok());
+        // client limité à Internet (celui des flux) : refusée après résolution
+        let public =
+            librqbit::protect_webseed_client(reqwest::Client::builder(), Arc::new(Rebinding), false).build().unwrap();
+        assert!(download_torrent(&public, &rebound).await.is_err());
+        // (une adresse locale écrite telle quelle est refusée avant, par `rss::link_allowed`)
     }
 }

@@ -76,6 +76,12 @@ impl Network {
         .build()
         .expect("client HTTP des sources web")
     }
+
+    /// Client limité à Internet : mêmes protections que les sources web (adresses locales retirées
+    /// après résolution, redirections contrôlées), pour les liens venus d'un tiers (flux RSS).
+    pub fn public_client(&self) -> reqwest::Client {
+        self.webseed_client(false)
+    }
 }
 
 /// Octets reçus par tous les liens directs depuis le lancement (statistiques cumulées).

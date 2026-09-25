@@ -183,6 +183,17 @@ pub fn link_allowed(feed_url: &str, link: &str) -> bool {
     same_server || !is_local_host(&target)
 }
 
+/// Lien web d'un élément à télécharger par le client limité à Internet (`Network::public_client`) :
+/// tous, sauf ceux du même serveur qu'un flux lui-même local (Jackett / Prowlarr sur ce PC).
+/// L'adresse écrite ne suffit pas : un nom public peut se résoudre vers la box (« DNS
+/// rebinding ») ou rediriger vers elle ; le client limité contrôle l'adresse réellement jointe.
+pub fn needs_public_only(feed_url: &str, link: &str) -> bool {
+    let (Ok(feed), Ok(target)) = (url::Url::parse(feed_url), url::Url::parse(link)) else { return true };
+    let same_server =
+        feed.host_str() == target.host_str() && feed.port_or_known_default() == target.port_or_known_default();
+    !(same_server && is_local_host(&feed))
+}
+
 /// Adresse de ce PC ou du réseau local (écrite telle quelle dans le lien).
 fn is_local_host(url: &url::Url) -> bool {
     use std::net::IpAddr;
@@ -358,6 +369,19 @@ mod tests {
         let jackett = "http://127.0.0.1:9117/api/v2.0/indexers/all/results/torznab/api?apikey=x";
         assert!(link_allowed(jackett, "http://127.0.0.1:9117/dl/indexer/?jackett_apikey=x&path=y"));
         assert!(!link_allowed(jackett, "http://127.0.0.1:8080/admin"));
+    }
+
+    #[test]
+    fn only_links_of_a_local_feed_skip_the_internet_only_client() {
+        // flux public : ses liens, même sur son propre serveur, passent par le client limité
+        // (le nom public pourrait se résoudre vers la box)
+        assert!(needs_public_only("https://tracker.example/rss", "https://tracker.example/dl/1.torrent"));
+        assert!(needs_public_only("https://tracker.example/rss", "https://autre.example/1.torrent"));
+        // Jackett sur ce PC : ses propres liens seulement
+        let jackett = "http://127.0.0.1:9117/api?apikey=x";
+        assert!(!needs_public_only(jackett, "http://127.0.0.1:9117/dl/x.torrent"));
+        assert!(needs_public_only(jackett, "https://tracker.example/1.torrent"));
+        assert!(needs_public_only("pas une adresse", "https://tracker.example/1.torrent"));
     }
 
     #[test]
