@@ -18,7 +18,13 @@ export default defineConfig({
   build: {
     target: 'chrome120',
     minify: 'esbuild',
-    sourcemap: false
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // bibliothèques (React, icônes…) à part : aucun fichier au-dessus du seuil d'avertissement de Vite
+        manualChunks: (id) => (id.includes('node_modules') ? 'vendor' : undefined)
+      }
+    }
   },
   // tests de l'interface (npm test) : navigateur simulé, sans Tauri ni moteur
   test: {
