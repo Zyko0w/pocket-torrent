@@ -151,6 +151,7 @@ pub struct AddReport {
 #[serde(rename_all = "camelCase")]
 pub struct SecretsSet {
     pub storage_to_token: bool,
+    pub proxy_password: bool,
 }
 
 #[derive(Serialize)]
@@ -174,6 +175,7 @@ pub struct SettingsView {
 pub struct SecretsInput {
     /// `None` : inchangé ; chaîne vide : effacer.
     pub storage_to_token: Option<String>,
+    pub proxy_password: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -291,6 +293,9 @@ pub struct Manager {
     vpn_switching: tokio::sync::Mutex<()>,
     /// Adresse du VPN à laquelle le moteur est relié.
     bound_ip: Mutex<Option<std::net::IpAddr>>,
+    /// Mot de passe du proxy SOCKS5, gardé en mémoire (le Gestionnaire d'identification n'est
+    /// relu qu'à l'enregistrement des réglages).
+    proxy_password: Mutex<String>,
     /// Dernière tentative de reconnexion automatique du tunnel intégré, et son erreur.
     tunnel_attempt: Mutex<Option<Instant>>,
     tunnel_error: Mutex<Option<String>>,
@@ -324,7 +329,18 @@ fn remove_old_files(dir: &Path, max_age: Duration) {
     }
 }
 
-fn desired_binding(settings: &Settings) -> Binding {
+/// `proxy_password` : lu une fois dans le Gestionnaire d'identification (voir `Manager::proxy_password`),
+/// pas à chaque vérification.
+fn desired_binding(settings: &Settings, proxy_password: &str) -> Binding {
+    if settings.vpn.mode == VpnMode::Proxy {
+        let vpn = &settings.vpn;
+        return Binding::Proxy(crate::engine::ProxyUrl::new(
+            &vpn.proxy_host,
+            vpn.proxy_port,
+            &vpn.proxy_user,
+            proxy_password,
+        ));
+    }
     match settings.vpn.required_adapter() {
         None => Binding::Free,
         Some(name) => match netif::find(name) {
@@ -343,6 +359,13 @@ fn network_for(binding: &Binding) -> direct::Network {
             None => (dns::Mode::Blocked, None, true),
         },
         Binding::Offline => (dns::Mode::Blocked, None, true),
+        Binding::Proxy(proxy) => {
+            // tout passe par le proxy, noms compris (socks5h) ; la DHT et les trackers UDP, seuls
+            // utilisateurs du résolveur global, sont coupés dans ce mode
+            let resolver = dns::Resolver::new(dns::Mode::Blocked);
+            dns::install_global(resolver.clone());
+            return direct::Network::with_proxy(None, false, Some(proxy.url("socks5h")), resolver);
+        }
     };
     let resolver = dns::Resolver::new(mode);
     dns::install_global(resolver.clone());
@@ -352,7 +375,8 @@ fn network_for(binding: &Binding) -> direct::Network {
 impl Manager {
     pub async fn start(app: AppHandle, settings_path: PathBuf, data_dir: PathBuf) -> anyhow::Result<Arc<Self>> {
         let settings = Settings::load(&settings_path);
-        let binding = desired_binding(&settings);
+        let proxy_password = secrets::get(Secret::ProxyPassword).unwrap_or_default();
+        let binding = desired_binding(&settings, &proxy_password);
         tracing::info!(?binding, "liaison réseau au démarrage");
         let network = network_for(&binding);
         let bound_ip = match &binding {
@@ -391,6 +415,7 @@ impl Manager {
             power: Mutex::new(Default::default()),
             vpn_switching: tokio::sync::Mutex::new(()),
             bound_ip: Mutex::new(bound_ip),
+            proxy_password: Mutex::new(proxy_password),
             tunnel_attempt: Mutex::new(None),
             tunnel_error: Mutex::new(None),
             tunnel_manual_off: AtomicBool::new(false),

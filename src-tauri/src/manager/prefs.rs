@@ -6,7 +6,10 @@ impl Manager {
     pub fn settings_view(&self) -> SettingsView {
         SettingsView {
             settings: self.settings(),
-            secrets: SecretsSet { storage_to_token: secrets::is_set(Secret::StorageToToken) },
+            secrets: SecretsSet {
+                storage_to_token: secrets::is_set(Secret::StorageToToken),
+                proxy_password: secrets::is_set(Secret::ProxyPassword),
+            },
             start_with_windows: system::start_with_windows_enabled(),
             magnet_handler: system::link_handler_enabled(),
             listen_port: self.engine.listen_port(),
@@ -31,6 +34,15 @@ impl Manager {
         if let Some(token) = &input.secrets.storage_to_token {
             secrets::set(Secret::StorageToToken, token)?;
         }
+        let mut proxy_changed = false;
+        if let Some(password) = &input.secrets.proxy_password {
+            if password.len() > 255 {
+                bail!("Proxy : mot de passe de 255 caractères au plus.");
+            }
+            secrets::set(Secret::ProxyPassword, password)?;
+            *self.proxy_password.lock() = password.clone();
+            proxy_changed = true;
+        }
         if input.start_with_windows != system::start_with_windows_enabled() {
             system::set_start_with_windows(input.start_with_windows)?;
         }
@@ -45,7 +57,9 @@ impl Manager {
 
         next.save(&self.settings_path)?;
         *self.settings.write() = next.clone();
-        let vpn_changed = next.vpn.required_adapter() != current.vpn.required_adapter();
+        let vpn_changed = next.vpn.required_adapter() != current.vpn.required_adapter()
+            || next.vpn.mode != current.vpn.mode
+            || (next.vpn.mode == VpnMode::Proxy && (next.vpn != current.vpn || proxy_changed));
         #[cfg(windows)]
         if current.vpn.mode == VpnMode::Wireguard && next.vpn.mode != VpnMode::Wireguard {
             // tunnel intégré abandonné : on le démonte

@@ -122,6 +122,8 @@ pub struct Session {
     pub(crate) reqwest_client: reqwest::Client,
     udp_tracker_client: UdpTrackerClient,
     disable_trackers: bool,
+    /// Pocket Torrent : pas de tracker UDP (voir `SessionOptions::disable_udp_trackers`).
+    disable_udp_trackers: bool,
 
     // Lifecycle management
     cancellation_token: CancellationToken,
@@ -510,6 +512,8 @@ pub struct SessionOptions {
 
     /// Disable tracker communication
     pub disable_trackers: bool,
+    /// Pocket Torrent : pas de tracker UDP (proxy SOCKS5 : l'UDP ne passerait pas par lui).
+    pub disable_udp_trackers: bool,
 
     /// Enable fastresume, to restore state quickly after restart.
     pub fastresume: bool,
@@ -594,6 +598,7 @@ impl Default for SessionOptions {
             dht: Some(DhtSessionConfig::default()),
             bind_device_name: None,
             disable_trackers: false,
+            disable_udp_trackers: false,
             fastresume: false,
             persistence: None,
             peer_id: None,
@@ -959,6 +964,7 @@ impl Session {
                 ipv4_only: opts.ipv4_only,
                 trackers: opts.trackers,
                 disable_trackers: opts.disable_trackers,
+                disable_udp_trackers: opts.disable_udp_trackers,
                 peer_limit: opts.peer_limit,
                 upload_slots: opts.upload_slots.filter(|&slots| slots > 0),
                 webseeds_https_only: opts.webseeds_https_only,
@@ -1851,6 +1857,7 @@ impl Session {
             self.peer_id,
             trackers,
             is_private,
+            self.disable_udp_trackers,
             Box::new(tracker_rx_stats),
             force_tracker_interval,
             self.announce_port.clone(),

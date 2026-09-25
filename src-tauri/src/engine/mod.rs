@@ -60,7 +60,7 @@ mod views;
 pub use add::looks_like_path;
 use add::*;
 use config::*;
-pub use config::{Binding, EngineConfig, limits_config};
+pub use config::{Binding, EngineConfig, ProxyUrl, limits_config};
 use views::*;
 pub use views::{EngineState, FileView, PeerView, PieceMap, Preview, TorrentView, TrackerView};
 

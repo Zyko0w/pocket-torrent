@@ -7,13 +7,17 @@ import { api, errorMessage, type NetworkAdapter, type Settings, type TunnelInfo,
 import { formatSize } from '../format'
 import { useInterval } from '../hooks'
 import { useToast } from './Toast'
-import { Check } from './settings/fields'
+import { Check, SecretField } from './settings/fields'
 
 interface VpnSectionProps {
   vpn: Settings['vpn']
   /** Mode actuellement enregistré (la protection change à l'enregistrement). */
   savedMode: VpnMode
   onChange: (vpn: Settings['vpn']) => void
+  /** Mot de passe du proxy : enregistré ou non, brouillon (`null` : inchangé). */
+  passwordSet: boolean
+  password: string | null
+  onPasswordChange: (password: string | null) => void
 }
 
 const MODES: { mode: VpnMode; label: string; help: string }[] = [
@@ -27,6 +31,11 @@ const MODES: { mode: VpnMode; label: string; help: string }[] = [
     mode: 'wireguard',
     label: 'Tunnel WireGuard intégré',
     help: 'Avec le fichier .conf de ton VPN : seuls les téléchargements passent par le tunnel, pas les jeux ni le navigateur.'
+  },
+  {
+    mode: 'proxy',
+    label: 'Proxy SOCKS5',
+    help: 'Proxy fourni par ton VPN ou un serveur à toi. Tout passe par lui ; la DHT, les trackers UDP et les connexions entrantes sont coupés (ils ne passeraient pas par le proxy).'
   }
 ]
 
@@ -36,7 +45,7 @@ function handshakeText (secs: number | null) {
   return `aucun échange depuis ${Math.round(secs / 60)} min : serveur injoignable ?`
 }
 
-export function VpnSection ({ vpn, savedMode, onChange }: VpnSectionProps) {
+export function VpnSection ({ vpn, savedMode, onChange, passwordSet, password, onPasswordChange }: VpnSectionProps) {
   const toast = useToast()
   const [adapters, setAdapters] = useState<NetworkAdapter[] | null>(null)
   const [tunnel, setTunnel] = useState<TunnelInfo | null>(null)
@@ -114,12 +123,48 @@ export function VpnSection ({ vpn, savedMode, onChange }: VpnSectionProps) {
         ))}
       </div>
 
-      {vpn.mode !== 'off' && (
+      {vpn.mode !== 'off' && vpn.mode !== 'proxy' && (
         <p className='help' style={{ marginTop: 0 }}>
           <ShieldCheck size={14} style={{ verticalAlign: '-2px' }} /> Arrêt automatique : si le VPN se coupe, tous les téléchargements
           se mettent en pause et rien ne sort sans lui ; ils reprennent dès son retour.
           {vpn.mode !== savedMode && ' Enregistre pour activer.'}
         </p>
+      )}
+
+      {vpn.mode === 'proxy' && (
+        <>
+          <p className='help' style={{ marginTop: 0 }}>
+            <ShieldCheck size={14} style={{ verticalAlign: '-2px' }} /> Si le proxy ne répond plus, rien ne sort sans lui : les
+            téléchargements attendent. Les noms (trackers, sites) sont résolus par le proxy.
+            {vpn.mode !== savedMode && ' Enregistre pour activer.'}
+          </p>
+          <div className='field-pair'>
+            <div className='field'>
+              <label htmlFor='proxy-host'>Serveur du proxy</label>
+              <input
+                id='proxy-host' className='input mono' spellCheck={false} placeholder='proxy.exemple.com ou 10.0.0.1'
+                value={vpn.proxyHost} onChange={(e) => onChange({ ...vpn, proxyHost: e.target.value })}
+              />
+            </div>
+            <div className='field'>
+              <label htmlFor='proxy-port'>Port</label>
+              <input
+                id='proxy-port' className='input' type='number' min={1} max={65535} placeholder='1080'
+                value={vpn.proxyPort || ''} onChange={(e) => onChange({ ...vpn, proxyPort: Math.max(0, Math.min(65535, Number(e.target.value) || 0)) })}
+              />
+            </div>
+          </div>
+          <div className='field-pair'>
+            <div className='field'>
+              <label htmlFor='proxy-user'>Identifiant <span className='optional'>(facultatif)</span></label>
+              <input
+                id='proxy-user' className='input' spellCheck={false} autoComplete='off'
+                value={vpn.proxyUser} onChange={(e) => onChange({ ...vpn, proxyUser: e.target.value })}
+              />
+            </div>
+            <SecretField id='proxy-password' label='Mot de passe (rangé dans Windows)' isSet={passwordSet} draft={password} onChange={onPasswordChange} />
+          </div>
+        </>
       )}
 
       {vpn.mode === 'adapter' && (
@@ -234,7 +279,7 @@ export function VpnSection ({ vpn, savedMode, onChange }: VpnSectionProps) {
         </div>
       )}
 
-      {vpn.mode !== 'off' && (
+      {vpn.mode !== 'off' && vpn.mode !== 'proxy' && (
         <div>
           <Check
             checked={vpn.portForwarding}

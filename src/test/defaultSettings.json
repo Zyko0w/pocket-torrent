@@ -94,6 +94,9 @@
   "vpn": {
     "adapter": "",
     "mode": "off",
-    "portForwarding": false
+    "portForwarding": false,
+    "proxyHost": "",
+    "proxyPort": 0,
+    "proxyUser": ""
   }
 }

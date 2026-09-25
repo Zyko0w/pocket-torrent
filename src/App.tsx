@@ -56,7 +56,7 @@ function Sidebar ({ view, onView, overview, counts, category, onCategory, onOpen
     : vpn.state === 'protected' && vpn.warning
       ? { dot: 'warn', text: 'VPN sans réponse', title: `${vpn.warning} Rien ne sort sans le VPN : les téléchargements attendent.` }
       : vpn.state === 'protected'
-        ? { dot: 'ok', text: `VPN · ${vpn.adapter ?? 'actif'}`, title: `Téléchargements protégés${vpn.ip ? ` (${vpn.ip})` : ''}` }
+        ? { dot: 'ok', text: `${vpn.mode === 'proxy' ? 'Proxy' : 'VPN'} · ${vpn.adapter ?? 'actif'}`, title: `Téléchargements protégés${vpn.ip ? ` (${vpn.ip})` : ''}` }
         : { dot: 'bad', text: 'VPN coupé', title: 'Tous les téléchargements sont bloqués jusqu’à son retour' }
 
   const setGameMode = async (mode: GameModeSwitch) => {

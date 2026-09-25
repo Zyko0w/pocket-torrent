@@ -9,6 +9,8 @@ pub enum Secret {
     StorageToVisitor,
     /// Fichier de configuration WireGuard (contient la clé privée du tunnel).
     WireguardConfig,
+    /// Mot de passe du proxy SOCKS5.
+    ProxyPassword,
 }
 
 impl Secret {
@@ -17,6 +19,7 @@ impl Secret {
             Secret::WireguardConfig => "PocketTorrent/wireguard-conf",
             Secret::StorageToToken => "PocketTorrent/storage-to-token",
             Secret::StorageToVisitor => "PocketTorrent/storage-to-visitor",
+            Secret::ProxyPassword => "PocketTorrent/proxy-password",
         }
     }
 }

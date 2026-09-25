@@ -47,7 +47,7 @@ describe('storage.to', () => {
     const settings = defaults as unknown as Settings
     render(
       <ToastProvider>
-        <StorageToSection settings={settings} update={vi.fn()} defaults={settings} saved={{ storageToToken: false }} secrets={{ storageToToken: null }} onSecretsChange={vi.fn()} />
+        <StorageToSection settings={settings} update={vi.fn()} defaults={settings} saved={{ storageToToken: false, proxyPassword: false }} secrets={{ storageToToken: null, proxyPassword: null }} onSecretsChange={vi.fn()} />
       </ToastProvider>
     )
     fireEvent.click(screen.getByRole('button', { name: /Tester la connexion/ }))

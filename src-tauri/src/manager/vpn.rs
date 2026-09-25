@@ -21,7 +21,7 @@ impl Manager {
     pub async fn check_vpn(self: &Arc<Self>) -> anyhow::Result<()> {
         let _switching = self.vpn_switching.lock().await;
         let settings = self.settings();
-        let desired = desired_binding(&settings);
+        let desired = desired_binding(&settings, &self.proxy_password.lock());
         if settings.vpn.mode == VpnMode::Wireguard && desired == Binding::Offline {
             self.reconnect_tunnel();
         }
@@ -190,7 +190,7 @@ impl Manager {
         let binding = self.engine.binding();
         let without = ask(direct::http_client(None, false, dns::Resolver::new(dns::Mode::Free))).await;
         let through = match binding {
-            Binding::Vpn { .. } => Some(ask(self.http()).await),
+            Binding::Vpn { .. } | Binding::Proxy(_) => Some(ask(self.http()).await),
             _ => None,
         };
         IpCheck {
@@ -205,6 +205,7 @@ impl Manager {
         let (state, adapter) = match (&binding, settings.vpn.mode) {
             (_, VpnMode::Off) => ("off", None),
             (Binding::Vpn { adapter, .. }, _) => ("protected", Some(adapter.clone())),
+            (Binding::Proxy(_), _) => ("protected", Some(settings.vpn.proxy_host.clone())),
             _ => ("blocked", settings.vpn.required_adapter().map(str::to_owned)),
         };
         VpnView {

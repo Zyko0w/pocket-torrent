@@ -35,7 +35,7 @@ export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode; a
   { id: 'diagnostics', label: 'Diagnostic', icon: <Stethoscope size={16} />, advanced: true }
 ]
 
-const NO_SECRET_CHANGE: SecretsInput = { storageToToken: null }
+const NO_SECRET_CHANGE: SecretsInput = { storageToToken: null, proxyPassword: null }
 
 /** Liste en texte libre (une valeur par ligne ou séparées par des virgules). */
 const toList = (text: string) => text.split(/[\n,]/).map((p) => p.trim()).filter(Boolean)
@@ -184,7 +184,11 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
     network: (
       <>
         <Section id='s-vpn' title='VPN' intro='Cacher ton adresse IP pendant les téléchargements, avec arrêt automatique si le VPN se coupe.'>
-          <VpnSection vpn={settings.vpn} savedMode={view.settings.vpn.mode} onChange={(vpn) => update({ vpn })} />
+          <VpnSection
+            vpn={settings.vpn} savedMode={view.settings.vpn.mode} onChange={(vpn) => update({ vpn })}
+            passwordSet={view.secrets.proxyPassword} password={draft.secrets.proxyPassword}
+            onPasswordChange={(proxyPassword) => edit({ secrets: { ...draft.secrets, proxyPassword } })}
+          />
         </Section>
         {advanced
           ? <NetworkSection {...section} listenPort={view.listenPort} externalPort={view.externalPort} />

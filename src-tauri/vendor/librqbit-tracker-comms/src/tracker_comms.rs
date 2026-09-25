@@ -187,6 +187,9 @@ impl TrackerComms {
         peer_id: Id20,
         trackers: Vec<Url>,
         failover: bool,
+        // Pocket Torrent : pas de tracker UDP (proxy SOCKS5 : l'UDP ne passerait pas par lui et
+        // révélerait l'adresse réelle)
+        no_udp: bool,
         stats: Box<dyn TorrentStatsProvider>,
         force_interval: Option<Duration>,
         announce_port: std::sync::Arc<std::sync::atomic::AtomicU16>,
@@ -211,6 +214,13 @@ impl TrackerComms {
                 let keep = !https_only || t.scheme() == "https";
                 if !keep {
                     skip(t, "ignoré : mode discret (trackers HTTPS seulement)");
+                }
+                keep
+            })
+            .filter(|t| {
+                let keep = !no_udp || t.scheme() != "udp";
+                if !keep {
+                    skip(t, "ignoré : l'UDP ne passe pas par le proxy SOCKS5");
                 }
                 keep
             })
@@ -763,6 +773,7 @@ mod tests {
             Id20::new([9; 20]),
             trackers.clone(),
             true,
+            false,
             Box::new(()),
             None,
             Arc::new(std::sync::atomic::AtomicU16::new(6881)),
@@ -818,6 +829,7 @@ mod tests {
             hash,
             Id20::new([6; 20]),
             trackers,
+            false,
             false,
             Box::new(()),
             None,

@@ -6,7 +6,7 @@ export type JobStatus =
   | 'metadata' | 'checking' | 'connecting' | 'queued' | 'downloading'
   | 'paused' | 'seeding' | 'uploading' | 'done' | 'error'
 export type Hold = 'user' | 'queue' | 'game' | 'disk' | 'vpn' | 'seeded'
-export type VpnMode = 'off' | 'adapter' | 'wireguard'
+export type VpnMode = 'off' | 'adapter' | 'wireguard' | 'proxy'
 export type Priority = 'high' | 'normal' | 'low'
 export type Dest = 'local' | 'storageTo'
 
@@ -196,7 +196,7 @@ export interface Settings {
     intervalMinutes: number
     feeds: { id: string; name: string; url: string; include: string; exclude: string; category: string | null; enabled: boolean; skipRepeats: boolean; regex: boolean }[]
   }
-  vpn: { mode: VpnMode; adapter: string; portForwarding: boolean }
+  vpn: { mode: VpnMode; adapter: string; portForwarding: boolean; proxyHost: string; proxyPort: number; proxyUser: string }
   privacy: { encryption: 'off' | 'prefer' | 'require'; hideAnnounces: boolean; hardenedMode: boolean }
   security: { excludedExtensions: string[] }
   blocklist: { enabled: boolean; source: string }
@@ -204,7 +204,7 @@ export interface Settings {
 
 export interface SettingsView {
   settings: Settings
-  secrets: { storageToToken: boolean }
+  secrets: { storageToToken: boolean; proxyPassword: boolean }
   startWithWindows: boolean
   magnetHandler: boolean
   listenPort: number | null
@@ -217,6 +217,7 @@ export interface SettingsView {
 /** `null` : clé inchangée ; chaîne vide : clé effacée. */
 export interface SecretsInput {
   storageToToken: string | null
+  proxyPassword: string | null
 }
 
 export interface AddOptions {

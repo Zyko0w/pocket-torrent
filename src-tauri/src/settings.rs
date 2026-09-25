@@ -133,12 +133,15 @@ pub enum VpnMode {
     Adapter,
     /// Tunnel WireGuard intégré à Pocket Torrent (seuls les téléchargements l'utilisent).
     Wireguard,
+    /// Proxy SOCKS5 : tout passe par lui ; ce qui ne peut pas (UDP : DHT, trackers UDP, µTP) est
+    /// coupé, les connexions entrantes aussi.
+    Proxy,
 }
 
 /// Nom de la carte réseau créée par le tunnel intégré.
 pub const WIREGUARD_ADAPTER: &str = "PocketTorrent";
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct VpnSettings {
     pub mode: VpnMode,
@@ -146,13 +149,17 @@ pub struct VpnSettings {
     pub adapter: String,
     /// Redirection de port demandée au serveur VPN (NAT-PMP, ProtonVPN), voir natpmp.rs.
     pub port_forwarding: bool,
+    /// Proxy SOCKS5 (mode `Proxy`) ; le mot de passe est dans le Gestionnaire d'identification.
+    pub proxy_host: String,
+    pub proxy_port: u16,
+    pub proxy_user: String,
 }
 
 impl VpnSettings {
     /// Carte réseau par laquelle tout doit passer, ou `None` sans VPN.
     pub fn required_adapter(&self) -> Option<&str> {
         match self.mode {
-            VpnMode::Off => None,
+            VpnMode::Off | VpnMode::Proxy => None,
             VpnMode::Adapter => Some(self.adapter.as_str()),
             VpnMode::Wireguard => Some(WIREGUARD_ADAPTER),
         }
@@ -548,6 +555,25 @@ impl Settings {
         if self.vpn.mode == VpnMode::Adapter && self.vpn.adapter.is_empty() {
             return Err("VPN : choisis la carte réseau de ton VPN.".into());
         }
+        self.vpn.proxy_host = self.vpn.proxy_host.trim().trim_matches(['[', ']']).to_owned();
+        self.vpn.proxy_user = self.vpn.proxy_user.trim().to_owned();
+        if self.vpn.mode == VpnMode::Proxy {
+            let host = &self.vpn.proxy_host;
+            let host_ok = host.parse::<std::net::IpAddr>().is_ok()
+                || (!host.is_empty()
+                    && host.len() <= 253
+                    && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-'));
+            if !host_ok {
+                return Err("Proxy : adresse du serveur invalide (nom ou adresse IP).".into());
+            }
+            if self.vpn.proxy_port == 0 {
+                return Err("Proxy : port manquant.".into());
+            }
+        }
+        // SOCKS5 : identifiant de 255 octets au plus
+        if self.vpn.proxy_user.len() > 255 || self.vpn.proxy_user.contains(char::is_control) {
+            return Err("Proxy : identifiant invalide.".into());
+        }
 
         self.security.excluded_extensions =
             self.security.excluded_extensions.iter().map(|e| e.trim().to_lowercase()).collect();
@@ -626,5 +652,31 @@ mod fixture_tests {
         }
         let actual: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(actual, expected, "réglages par défaut changés : relancer avec UPDATE_FIXTURES=1");
+    }
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::{Settings, VpnMode};
+
+    fn with_proxy(host: &str, port: u16, user: &str) -> Result<Settings, String> {
+        let mut settings = Settings::default();
+        settings.vpn.mode = VpnMode::Proxy;
+        settings.vpn.proxy_host = host.into();
+        settings.vpn.proxy_port = port;
+        settings.vpn.proxy_user = user.into();
+        settings.normalize().map(|()| settings)
+    }
+
+    #[test]
+    fn proxy_settings_are_checked() {
+        assert_eq!(with_proxy(" proxy.exemple.com ", 1080, " moi ").unwrap().vpn.proxy_host, "proxy.exemple.com");
+        assert_eq!(with_proxy("[2001:db8::1]", 1080, "").unwrap().vpn.proxy_host, "2001:db8::1");
+        for (host, port) in [("", 1080), ("proxy.exemple.com", 0), ("a b", 1080), ("x@y", 1080), ("http://p", 1080)] {
+            assert!(with_proxy(host, port, "").is_err(), "{host}:{port}");
+        }
+        assert!(with_proxy("p", 1080, &"u".repeat(256)).is_err());
+        // hors mode proxy : champs vides acceptés
+        assert!(Settings::default().normalize().is_ok());
     }
 }

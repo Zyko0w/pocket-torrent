@@ -79,9 +79,11 @@ impl SocksProxyConfig {
         }
         let host = url.host_str().context("missing host")?;
         let port = url.port().context("missing port")?;
+        // Pocket Torrent : identifiant et mot de passe décodés (l'URL les garde encodés : un « @ »
+        // ou un « % » du mot de passe partait tel quel, encodé, au proxy)
         let up = url
             .password()
-            .map(|p| (url.username().to_owned(), p.to_owned()));
+            .map(|p| (percent_decode(url.username()), percent_decode(p)));
         Ok(Self {
             host: host.to_owned(),
             port,
@@ -128,6 +130,48 @@ gen_stats!(ConnectStatsAtomic ConnectStatsSnapshot, [], [
     tcp PerFamilyAtomic PerFamilySnapshot,
     utp PerFamilyAtomic PerFamilySnapshot
 ]);
+
+/// Décodage des « %XX » d'un composant d'URL (UTF-8 invalide remplacé).
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        match (
+            bytes[i],
+            bytes.get(i + 1).copied().and_then(hex),
+            bytes.get(i + 2).copied().and_then(hex),
+        ) {
+            (b'%', Some(high), Some(low)) => {
+                out.push((high * 16 + low) as u8);
+                i += 3;
+            }
+            (byte, _, _) => {
+                out.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod proxy_url_tests {
+    #[test]
+    fn credentials_are_decoded() {
+        let config = super::SocksProxyConfig::parse(
+            "socks5://moi%40site:p%40ss%25%3Aw0rd@proxy.example:1080",
+        )
+        .unwrap();
+        assert_eq!(config.host, "proxy.example");
+        assert_eq!(config.port, 1080);
+        assert_eq!(
+            config.username_password,
+            Some(("moi@site".to_owned(), "p@ss%:w0rd".to_owned()))
+        );
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct StreamConnector {

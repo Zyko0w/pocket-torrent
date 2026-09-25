@@ -47,7 +47,8 @@ Client : Tauri + React, moteur `librqbit` 9.0.1 (vendorisé dans `src-tauri/vend
 | **§8** Performances bas niveau | ❌ *refusé* | Dépend de l'intérieur du moteur, rien d'actionnable sans le patcher en profondeur |
 | **§9.1-9.3** VPN, arrêt automatique, chiffrement, vérification d'IP | ✅ *déjà en place* | Avant cette série de sessions |
 | **§9.3** Redirection de port automatique côté VPN | ✅ *(0.2.0, ProtonVPN)* | NAT-PMP auprès de la passerelle du VPN, renouvelé avant expiration, port d'écoute changé à chaud ; ports système refusés. Les autres fournisseurs (API propres) ne sont pas gérés |
-| **§9.4** Proxy manuel, **§9.5** I2P | ❌ *refusé* | Choix d'architecture (VPN/tunnel seulement) / chantier à part entière |
+| **§9.4** Proxy manuel | ✅ *(25/09)* | SOCKS5 avec identifiants (mot de passe dans le Gestionnaire d'identification) : pairs, trackers HTTP, sources web, liens directs, RSS et storage.to passent par lui, noms résolus par lui (`socks5h`) ; DHT, trackers UDP, µTP, écoute, UPnP et découverte locale coupés (ils ne passeraient pas par le proxy) ; proxy injoignable = rien ne sort. Test en bac à sable avec un faux proxy |
+| **§9.5** I2P | ❌ *refusé* | Chantier à part entière (moteur à réécrire pour des adresses I2P) |
 | **§9.5** Détection Tor | *N/A* | Pas de réglage de proxy manuel dans l'app : aucun chemin pour router par Tor sans le savoir |
 | **§9.6** Mode confidentialité renforcée | ✅ | Peer ID masqué, UPnP coupé, `yourip` (BEP 10) supprimé (correctif moteur ; **corrigé le 23/09** : ne s'appliquait qu'à la récupération des métadonnées, pas aux pairs du torrent) |
 | **§9.7** Listes de blocage d'IP | ✅ | Format P2P (texte/gzip), avertissement d'efficacité limitée affiché comme demandé |

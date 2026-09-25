@@ -18,6 +18,44 @@ pub enum Binding {
     Vpn { adapter: String, ipv6: bool },
     /// VPN exigé mais coupé : aucune communication possible.
     Offline,
+    /// Tout par ce proxy SOCKS5 (TCP seulement : ni DHT, ni UDP, ni connexion entrante).
+    Proxy(ProxyUrl),
+}
+
+/// Adresse d'un proxy SOCKS5, identifiants compris : jamais écrite telle quelle dans le journal.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ProxyUrl {
+    host: String,
+    port: u16,
+    credentials: Option<(String, String)>,
+}
+
+impl ProxyUrl {
+    pub fn new(host: &str, port: u16, user: &str, password: &str) -> Self {
+        let credentials = (!user.is_empty() || !password.is_empty()).then(|| (user.to_owned(), password.to_owned()));
+        Self { host: host.to_owned(), port, credentials }
+    }
+
+    /// `socks5h` : noms résolus par le proxy (aucune requête DNS ne sort d'ici) ; `socks5` pour les
+    /// pairs, toujours désignés par adresse IP.
+    pub fn url(&self, scheme: &str) -> String {
+        use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+        let host = if self.host.contains(':') { format!("[{}]", self.host) } else { self.host.clone() };
+        let credentials = self.credentials.as_ref().map_or_else(String::new, |(user, password)| {
+            format!(
+                "{}:{}@",
+                utf8_percent_encode(user, NON_ALPHANUMERIC),
+                utf8_percent_encode(password, NON_ALPHANUMERIC)
+            )
+        });
+        format!("{scheme}://{credentials}{host}:{}", self.port)
+    }
+}
+
+impl std::fmt::Debug for ProxyUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "socks5://{}{}:{}", if self.credentials.is_some() { "***@" } else { "" }, self.host, self.port)
+    }
 }
 
 /// TCP seul par défaut ; µTP en plus si activé dans les réglages (voir `Settings::utp_enabled`).
@@ -57,6 +95,21 @@ pub(super) async fn create_session(
                 listen_addr: SocketAddr::from((Ipv6Addr::UNSPECIFIED, settings.torrent_port)),
                 enable_upnp_port_forwarding: false,
                 ..Default::default()
+            }),
+            ..free_options(settings, data_dir)
+        },
+        Binding::Proxy(proxy) => SessionOptions {
+            // ni DHT ni µTP (UDP), ni écoute (le proxy n'apporte pas de connexions entrantes), ni
+            // découverte locale ou UPnP (réseau local, hors proxy)
+            dht: None,
+            listen: None,
+            disable_local_service_discovery: true,
+            disable_udp_trackers: true,
+            connect: Some(ConnectionOptions {
+                proxy_url: Some(proxy.url("socks5")),
+                enable_tcp: false,
+                peer_opts: None,
+                encryption: encryption_mode(settings),
             }),
             ..free_options(settings, data_dir)
         },
@@ -244,5 +297,19 @@ pub(super) fn free_options(settings: &Settings, data_dir: &Path) -> SessionOptio
         trackers: EXTRA_TRACKERS.iter().filter_map(|t| t.parse().ok()).collect(),
         ratelimits: limits_config(&settings.limits),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod proxy_url_tests {
+    use super::ProxyUrl;
+
+    #[test]
+    fn proxy_urls_are_built_safely() {
+        let proxy = ProxyUrl::new("2001:db8::1", 1080, "moi@site", "p@ss:w/rd%");
+        assert_eq!(proxy.url("socks5h"), "socks5h://moi%40site:p%40ss%3Aw%2Frd%25@[2001:db8::1]:1080");
+        assert_eq!(ProxyUrl::new("10.0.0.1", 1080, "", "").url("socks5"), "socks5://10.0.0.1:1080");
+        // journal : jamais le mot de passe ni l'identifiant
+        assert_eq!(format!("{proxy:?}"), "socks5://***@2001:db8::1:1080");
     }
 }

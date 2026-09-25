@@ -28,12 +28,14 @@ pub fn http_client(
     offline: bool,
     resolver: Arc<crate::dns::Resolver>,
 ) -> reqwest::Client {
-    http_client_builder(local_ip, offline, resolver).build().expect("client HTTP")
+    http_client_builder(local_ip, offline, None, resolver).build().expect("client HTTP")
 }
 
+/// `proxy` : adresse `socks5h://` par laquelle tout doit passer (noms résolus par le proxy).
 fn http_client_builder(
     local_ip: Option<std::net::IpAddr>,
     offline: bool,
+    proxy: Option<&str>,
     resolver: Arc<crate::dns::Resolver>,
 ) -> reqwest::ClientBuilder {
     let mut builder = reqwest::Client::builder()
@@ -45,6 +47,11 @@ fn http_client_builder(
         .dns_resolver(Arc::new(crate::dns::ReqwestResolver(resolver)));
     if offline {
         builder = builder.proxy(reqwest::Proxy::all("socks5://127.0.0.1:9").expect("proxy local"));
+    } else if let Some(proxy) = proxy {
+        // adresse invalide : proxy injoignable plutôt qu'une sortie directe
+        let proxy = reqwest::Proxy::all(proxy)
+            .unwrap_or_else(|_| reqwest::Proxy::all("socks5://127.0.0.1:9").expect("proxy local"));
+        builder = builder.proxy(proxy);
     }
     builder
 }
@@ -56,12 +63,25 @@ pub struct Network {
     pub http: reqwest::Client,
     local_ip: Option<std::net::IpAddr>,
     offline: bool,
+    proxy: Option<String>,
     resolver: Arc<crate::dns::Resolver>,
 }
 
 impl Network {
     pub fn new(local_ip: Option<std::net::IpAddr>, offline: bool, resolver: Arc<crate::dns::Resolver>) -> Self {
-        Self { http: http_client(local_ip, offline, resolver.clone()), local_ip, offline, resolver }
+        Self::with_proxy(local_ip, offline, None, resolver)
+    }
+
+    /// Réseau passant entièrement par un proxy (`socks5h://…`).
+    pub fn with_proxy(
+        local_ip: Option<std::net::IpAddr>,
+        offline: bool,
+        proxy: Option<String>,
+        resolver: Arc<crate::dns::Resolver>,
+    ) -> Self {
+        let http =
+            http_client_builder(local_ip, offline, proxy.as_deref(), resolver.clone()).build().expect("client HTTP");
+        Self { http, local_ip, offline, proxy, resolver }
     }
 
     /// Client des sources web (BEP 19) : même sortie (VPN), même DNS chiffré, mais adresses du
@@ -69,7 +89,7 @@ impl Network {
     /// `https_only` (mode discret).
     pub fn webseed_client(&self, https_only: bool) -> reqwest::Client {
         librqbit::protect_webseed_client(
-            http_client_builder(self.local_ip, self.offline, self.resolver.clone()),
+            http_client_builder(self.local_ip, self.offline, self.proxy.as_deref(), self.resolver.clone()),
             Arc::new(crate::dns::ReqwestResolver(self.resolver.clone())),
             https_only,
         )

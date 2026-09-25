@@ -75,6 +75,120 @@ mod sandbox_tests {
         engine.stop().await;
     }
 
+    /// Faux proxy SOCKS5 (127.0.0.1) : note les identifiants et chaque destination demandée,
+    /// puis refuse la connexion (rien ne sort vers Internet).
+    async fn fake_socks5() -> (u16, Arc<Mutex<Vec<String>>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut head = [0u8; 2];
+                    socket.read_exact(&mut head).await?;
+                    let mut methods = vec![0u8; head[1] as usize];
+                    socket.read_exact(&mut methods).await?;
+                    if methods.contains(&2) {
+                        socket.write_all(&[5, 2]).await?;
+                        let mut version_len = [0u8; 2];
+                        socket.read_exact(&mut version_len).await?;
+                        let mut user = vec![0u8; version_len[1] as usize];
+                        socket.read_exact(&mut user).await?;
+                        let mut pass_len = [0u8; 1];
+                        socket.read_exact(&mut pass_len).await?;
+                        let mut pass = vec![0u8; pass_len[0] as usize];
+                        socket.read_exact(&mut pass).await?;
+                        log.lock().push(format!(
+                            "auth {}:{}",
+                            String::from_utf8_lossy(&user),
+                            String::from_utf8_lossy(&pass)
+                        ));
+                        socket.write_all(&[1, 0]).await?;
+                    } else {
+                        socket.write_all(&[5, 0]).await?;
+                    }
+                    let mut request = [0u8; 4];
+                    socket.read_exact(&mut request).await?;
+                    let host = match request[3] {
+                        1 => {
+                            let mut ip = [0u8; 4];
+                            socket.read_exact(&mut ip).await?;
+                            std::net::Ipv4Addr::from(ip).to_string()
+                        }
+                        3 => {
+                            let mut len = [0u8; 1];
+                            socket.read_exact(&mut len).await?;
+                            let mut name = vec![0u8; len[0] as usize];
+                            socket.read_exact(&mut name).await?;
+                            String::from_utf8_lossy(&name).into_owned()
+                        }
+                        _ => {
+                            let mut ip = [0u8; 16];
+                            socket.read_exact(&mut ip).await?;
+                            format!("[{}]", std::net::Ipv6Addr::from(ip))
+                        }
+                    };
+                    let mut port = [0u8; 2];
+                    socket.read_exact(&mut port).await?;
+                    log.lock().push(format!("{host}:{}", u16::from_be_bytes(port)));
+                    // connexion refusée
+                    socket.write_all(&[5, 5, 0, 1, 0, 0, 0, 0, 0, 0]).await?;
+                    Ok::<_, std::io::Error>(())
+                });
+            }
+        });
+        (port, seen)
+    }
+
+    /// Mode proxy SOCKS5 : pairs et trackers HTTP passent par le proxy (noms résolus par lui,
+    /// identifiants transmis), rien d'UDP (ni DHT, ni tracker UDP), aucune écoute.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn proxy_mode_sends_everything_through_the_proxy() {
+        let sandbox = Sandbox::new();
+        let (port, seen) = fake_socks5().await;
+        let proxy = ProxyUrl::new("127.0.0.1", port, "moi", "p@ss:w%rd");
+        assert!(
+            !format!("{:?}", Binding::Proxy(proxy.clone())).contains("p@ss"),
+            "mot de passe jamais dans le journal"
+        );
+        let network = Network::with_proxy(
+            None,
+            false,
+            Some(proxy.url("socks5h")),
+            crate::dns::Resolver::new(crate::dns::Mode::Blocked),
+        );
+        let settings = Settings { download_dir: sandbox.root.join("telechargements"), ..Default::default() };
+        let engine = Arc::new(
+            Engine::start(&settings, &sandbox.root.join("donnees"), Binding::Proxy(proxy), &network).await.unwrap(),
+        );
+        assert!(engine.session().get_dht().is_none(), "pas de DHT");
+        assert!(engine.listen_port().is_none(), "pas d'écoute");
+
+        let hash = "e8812d0e9b24a9a82a1376d50f2b786ee6ea797a";
+        let magnet = format!(
+            "magnet:?xt=urn:btih:{hash}&x.pe=203.0.113.7:6881&tr=http%3A%2F%2Ftracker.example%2Fannounce&tr=udp%3A%2F%2Ftracker.example%3A1337%2Fannounce"
+        );
+        let searching = {
+            let engine = engine.clone();
+            tokio::spawn(async move { engine.preview(&magnet).await })
+        };
+        let wanted = ["203.0.113.7:6881", "tracker.example:80", "auth moi:p@ss:w%rd"];
+        let started = Instant::now();
+        while !wanted.iter().all(|w| seen.lock().iter().any(|s| s == w)) {
+            assert!(started.elapsed() < std::time::Duration::from_secs(15), "vu par le proxy : {:?}", seen.lock());
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let statuses = librqbit_tracker_comms::tracker_statuses(&hash.parse().unwrap());
+        let udp = statuses.iter().find(|s| s.url.starts_with("udp://")).expect("tracker UDP listé");
+        assert_eq!(udp.state, librqbit_tracker_comms::TrackerState::Skipped);
+        assert!(udp.error.as_deref().is_some_and(|e| e.contains("proxy")), "{:?}", udp.error);
+        searching.abort();
+        engine.stop().await;
+    }
+
     /// Faux serveur de liste de blocage (127.0.0.1) : compte les requêtes reçues.
     async fn fake_blocklist(body: &'static [u8]) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
         let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
