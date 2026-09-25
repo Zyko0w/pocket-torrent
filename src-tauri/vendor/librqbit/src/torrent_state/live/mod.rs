@@ -1093,6 +1093,9 @@ const DEFAULT_PEER_REQUEST_WINDOW: usize = 128;
 /// Tests : déconnexions dues à BEP 21 (pair en partage seul alors qu'on a fini).
 // ------------------------------------------------------------------ Pocket Torrent : BEP 55
 
+/// Intervalle minimal entre deux messages de perçage acceptés d'un même pair.
+const HOLEPUNCH_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// Tests : mises en relation faites (intermédiaire) et reçues (demandeur, cible).
 #[cfg(test)]
 pub(crate) static HOLEPUNCH_RELAYED: std::sync::atomic::AtomicUsize =
@@ -1128,6 +1131,25 @@ impl TorrentStateLive {
 
     pub(crate) fn on_holepunch_message(&self, from: SocketAddr, msg: UtHolepunch) {
         if self.metadata.info.info().private {
+            return;
+        }
+        // un message par seconde et par pair au plus : une rafale (demandes qui font parcourir
+        // tous les pairs, mises en relation qui font contacter des adresses) est ignorée
+        let accepted = self
+            .peers
+            .with_live_mut(from, "holepunch_rate", |live| {
+                let now = std::time::Instant::now();
+                let ok = live
+                    .holepunch_last
+                    .is_none_or(|at| now.duration_since(at) >= HOLEPUNCH_MIN_INTERVAL);
+                if ok {
+                    live.holepunch_last = Some(now);
+                }
+                ok
+            })
+            .unwrap_or(false);
+        if !accepted {
+            trace!(?from, "BEP 55 : message ignoré (trop rapproché)");
             return;
         }
         match msg {

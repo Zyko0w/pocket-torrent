@@ -316,6 +316,8 @@ pub(crate) struct LivePeerState {
     /// gestion du perçage de NAT.
     pub listen_port: Option<u16>,
     pub holepunch: bool,
+    /// Dernier message de perçage reçu de ce pair (au plus un par seconde : au-delà, ignoré).
+    pub holepunch_last: Option<std::time::Instant>,
 }
 
 impl LivePeerState {
@@ -339,6 +341,7 @@ impl LivePeerState {
             connection_kind,
             listen_port: None,
             holepunch: false,
+            holepunch_last: None,
         }
     }
 

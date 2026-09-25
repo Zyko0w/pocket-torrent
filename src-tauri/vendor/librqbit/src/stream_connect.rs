@@ -77,7 +77,12 @@ impl SocksProxyConfig {
         if url.scheme() != "socks5" {
             anyhow::bail!("proxy URL should have socks5 scheme");
         }
-        let host = url.host_str().context("missing host")?;
+        // Pocket Torrent : une adresse IPv6 arrive entre crochets (« [2001:db8::1] »), que la
+        // connexion au proxy ne comprend pas
+        let host = url
+            .host_str()
+            .context("missing host")?
+            .trim_matches(['[', ']']);
         let port = url.port().context("missing port")?;
         // Pocket Torrent : identifiant et mot de passe décodés (l'URL les garde encodés : un « @ »
         // ou un « % » du mot de passe partait tel quel, encodé, au proxy)
@@ -170,6 +175,8 @@ mod proxy_url_tests {
             config.username_password,
             Some(("moi@site".to_owned(), "p@ss%:w0rd".to_owned()))
         );
+        let v6 = super::SocksProxyConfig::parse("socks5://[2001:db8::1]:1080").unwrap();
+        assert_eq!(v6.host, "2001:db8::1");
     }
 }
 
