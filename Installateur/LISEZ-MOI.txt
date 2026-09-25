@@ -1,16 +1,16 @@
-Torrent Cloud 0.1.0 — installation
-===================================
+Pocket Torrent — installation
+=============================
 
-1. Double-cliquer sur « Torrent Cloud_0.1.0_x64-setup.exe ».
+1. Double-cliquer sur « PocketTorrent_<version>_x64-setup.exe ».
    Pas besoin de droits administrateur : le logiciel s'installe pour le compte Windows en cours.
 
 2. Si Windows affiche « Windows a protégé votre ordinateur » :
    cliquer sur « Informations complémentaires », puis « Exécuter quand même ».
    (Le programme n'est pas signé par un certificat payant, d'où cet avertissement.)
 
-3. Lancer « Torrent Cloud » depuis le menu Démarrer ou le raccourci du Bureau.
+3. Lancer « Pocket Torrent » depuis le menu Démarrer ou le raccourci du Bureau.
 
 Configuration nécessaire : Windows 10 ou 11, 64 bits.
 
-Désinstallation : Paramètres Windows > Applications > Torrent Cloud > Désinstaller.
+Désinstallation : Paramètres Windows > Applications > Pocket Torrent > Désinstaller.
 Si le tunnel VPN intégré a été installé, le retirer d'abord : Réglages > VPN > Désinstaller.
