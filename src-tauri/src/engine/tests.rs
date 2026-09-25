@@ -619,6 +619,73 @@ mod sandbox_tests {
         assert!(!looks_like_path("magnet:?xt=urn:btih:abc"));
         assert!(!looks_like_path("n'importe quoi"));
     }
+
+    /// Actions du volet d'un torrent sur un torrent de 3 fichiers pas encore téléchargé :
+    /// ordre de priorité, choix des fichiers, pause/reprise, lien magnet, empreinte inconnue.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn torrent_actions_work_and_refuse_bad_input() {
+        let sandbox = Sandbox::new();
+        let engine = sandbox.engine().await;
+        let pack = sandbox.root.join("source").join("Série & Co #1");
+        std::fs::create_dir_all(&pack).unwrap();
+        for (name, len) in [("a.mkv", 200_000), ("b.mkv", 100_000), ("c.srt", 3_000)] {
+            std::fs::write(pack.join(name), vec![3u8; len]).unwrap();
+        }
+        let (created, handle) = engine.session().create_and_serve_torrent(&pack, Default::default()).await.unwrap();
+        let hash = handle.info_hash().as_string();
+        engine.delete(&hash, false).await.unwrap();
+        let file = sandbox.root.join("pack.torrent");
+        std::fs::write(&file, created.as_bytes().unwrap()).unwrap();
+        let base = sandbox.root.join("telechargements");
+        assert_eq!(engine.add(&file.to_string_lossy(), &base, None, false).await.unwrap(), hash);
+        wait_finished(&engine, &hash).await;
+
+        let paths = |engine: &Engine| -> Vec<String> {
+            engine.files(&hash).unwrap().into_iter().map(|f| f.path.rsplit('/').next().unwrap().to_owned()).collect()
+        };
+        assert_eq!(paths(&engine), ["a.mkv", "b.mkv", "c.srt"]);
+
+        // priorité : le dernier remonte d'un cran ; le premier ne peut pas monter plus haut
+        let c = engine.files(&hash).unwrap().iter().find(|f| f.path.ends_with("c.srt")).unwrap().index;
+        engine.move_file_priority(&hash, c, true).await.unwrap();
+        assert_eq!(paths(&engine), ["a.mkv", "c.srt", "b.mkv"]);
+        let first = engine.files(&hash).unwrap()[0].index;
+        let unchanged = engine.move_file_priority(&hash, first, true).await.unwrap();
+        assert_eq!(unchanged[0], first);
+        assert!(engine.move_file_priority(&hash, 99, true).await.is_err(), "fichier inexistant");
+        assert!(engine.restore_file_priorities(&hash, &[0, 0, 1]).is_err(), "ordre incohérent refusé");
+
+        // choix des fichiers
+        engine.set_files(&hash, vec![0]).await.unwrap();
+        let included: Vec<bool> =
+            engine.files(&hash).unwrap().iter().filter(|f| f.index == 0).map(|f| f.included).collect();
+        assert_eq!(included, [true]);
+        assert_eq!(engine.files(&hash).unwrap().iter().filter(|f| f.included).count(), 1);
+        assert!(engine.set_files(&hash, vec![]).await.is_err(), "aucun fichier : refusé");
+        let _ = engine.set_files(&hash, vec![999]).await; // hors limites : sans panique
+        assert_eq!(engine.files(&hash).unwrap().len(), 3);
+
+        // pause et reprise
+        engine.pause(&hash).await.unwrap();
+        engine.pause(&hash).await.unwrap();
+        assert!(engine.torrents().iter().any(|t| t.info_hash == hash && t.state == EngineState::Paused));
+        engine.resume(&hash).await.unwrap();
+        assert!(engine.torrents().iter().any(|t| t.info_hash == hash && t.state != EngineState::Paused));
+
+        // lien magnet : nom encodé (« & » et « # » ne coupent pas le lien)
+        let magnet = engine.magnet(&hash).unwrap();
+        assert!(magnet.starts_with(&format!("magnet:?xt=urn:btih:{hash}&dn=")), "{magnet}");
+        let dn = magnet.split("&dn=").nth(1).unwrap().split('&').next().unwrap();
+        assert!(!dn.contains('#') && !dn.contains(' '), "{magnet}");
+        assert_eq!(percent_encoding::percent_decode_str(dn).decode_utf8().unwrap(), "Série & Co #1");
+
+        // empreinte inconnue : erreurs lisibles, jamais de panique
+        let unknown = "0".repeat(40);
+        assert!(engine.files(&unknown).is_err());
+        assert!(engine.pause(&unknown).await.is_err());
+        assert!(engine.magnet("pas une empreinte").is_err());
+        engine.stop().await;
+    }
 }
 
 mod magnet_tests {
