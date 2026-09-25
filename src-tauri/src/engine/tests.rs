@@ -131,11 +131,11 @@ mod sandbox_tests {
             let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
             let mut block = vec![0u8; 1024 * 1024];
             for _ in 0..mib {
-                for word in block.chunks_exact_mut(8) {
+                for word in block.as_chunks_mut::<8>().0 {
                     x ^= x << 13;
                     x ^= x >> 7;
                     x ^= x << 17;
-                    word.copy_from_slice(&x.to_le_bytes());
+                    *word = x.to_le_bytes();
                 }
                 file.write_all(&block).unwrap();
             }
