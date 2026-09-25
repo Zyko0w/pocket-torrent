@@ -14,6 +14,55 @@ impl Manager {
         self.tasks.lock().insert(task_key, task);
     }
 
+    /// Envoi à la demande d'un téléchargement terminé gardé sur le PC, avec ses propres choix
+    /// (durée de vie, limite de téléchargements, effacement local) à la place des réglages.
+    pub fn send_online(self: &Arc<Self>, id: &str, options: SendOptions) -> anyhow::Result<()> {
+        if !(1..=7).contains(&options.expiry_days) {
+            bail!("Durée des liens entre 1 et 7 jours.");
+        }
+        if options.max_downloads > crate::settings::MAX_DOWNLOADS {
+            bail!("Au plus {} téléchargements avant effacement.", crate::settings::MAX_DOWNLOADS);
+        }
+        let key = JobKey::parse(id)?;
+        if self.tasks.lock().contains_key(&format!("upload:{}", key.id())) {
+            bail!("Envoi déjà en cours.");
+        }
+        {
+            let mut data = self.data.lock();
+            let common = match &key {
+                JobKey::Torrent(hash) => {
+                    let entry = data.torrents.get_mut(hash).context("Téléchargement introuvable.")?;
+                    if entry.removed {
+                        bail!("Fichiers supprimés : rien à envoyer.");
+                    }
+                    if entry.final_folder.is_some() {
+                        bail!("Fichiers pas encore rangés dans leur dossier final : réessaie dans un instant.");
+                    }
+                    &mut entry.common
+                }
+                JobKey::Direct(id) => {
+                    let entry = data.direct_mut(id).context("Téléchargement introuvable.")?;
+                    if !entry.final_path.as_deref().is_some_and(Path::is_file) {
+                        bail!("Fichier téléchargé introuvable.");
+                    }
+                    &mut entry.common
+                }
+                JobKey::Pending(_) => bail!("Rien à envoyer."),
+            };
+            if common.finished_at.is_none() {
+                bail!("Le téléchargement n'est pas terminé.");
+            }
+            if common.delivery.as_ref().is_some_and(|d| d.state != DeliveryState::Error) {
+                bail!("Déjà envoyé sur storage.to.");
+            }
+            // gardé avec le téléchargement : un envoi repris au prochain lancement les respecte
+            common.send_options = Some(options);
+        }
+        self.save_now();
+        self.start_delivery(key);
+        Ok(())
+    }
+
     pub(super) fn with_common<R>(&self, key: &JobKey, f: impl FnOnce(&mut Common) -> R) -> Option<R> {
         let mut data = self.data.lock();
         match key {
@@ -25,21 +74,19 @@ impl Manager {
 
     async fn deliver(&self, key: &JobKey) -> anyhow::Result<()> {
         let settings = self.settings();
-        let storage = StorageTo::from_settings(&settings.storage_to)?;
-
-        let (files, name) = {
+        let (files, name, dest, options) = {
             let data = self.data.lock();
             match key {
                 JobKey::Torrent(hash) => {
                     let entry = data.torrents.get(hash).context("téléchargement retiré")?;
-                    (None, entry.name.clone())
+                    (None, entry.name.clone(), entry.common.dest, entry.common.send_options)
                 }
                 JobKey::Direct(id) => {
                     let entry = data.directs.iter().find(|d| &d.id == id).context("téléchargement retiré")?;
                     let path = entry.final_path.clone().context("fichier téléchargé introuvable")?;
                     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(entry.total_bytes);
                     let rel = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    (Some(vec![(rel, path, size)]), entry.name.clone())
+                    (Some(vec![(rel, path, size)]), entry.name.clone(), entry.common.dest, entry.common.send_options)
                 }
                 JobKey::Pending(_) => bail!("rien à envoyer"),
             }
@@ -50,6 +97,15 @@ impl Manager {
             _ => unreachable!(),
         };
         let name = name.unwrap_or_else(|| "fichiers".into());
+        let storage = StorageTo::from_settings(&settings.storage_to)?;
+        let (storage, expiry_days, delete_local) = match options {
+            Some(o) => (storage.with_limits(o.expiry_days, o.max_downloads), o.expiry_days, o.delete_local),
+            // réglages : seulement pour « Envoyer sur storage.to » choisi à l'ajout
+            None => {
+                let delete = settings.storage_to.delete_after_upload && dest == Dest::StorageTo;
+                (storage, settings.storage_to.expiry_days, delete)
+            }
+        };
         let total: u64 = files.iter().map(|(_, _, size)| size).sum();
 
         self.with_common(key, |c| {
@@ -115,13 +171,13 @@ impl Manager {
             });
         }
 
-        let expires_at = Some(now_ms() + u64::from(settings.storage_to.expiry_days) * 86_400_000);
+        let expires_at = Some(now_ms() + u64::from(expiry_days) * 86_400_000);
         self.with_common(key, |c| {
             c.delivery =
                 Some(Delivery { state: DeliveryState::Done, sent_bytes: total, total_bytes: total, links, expires_at });
         });
 
-        if settings.storage_to.delete_after_upload {
+        if delete_local {
             match key {
                 JobKey::Torrent(hash) => {
                     self.engine
@@ -133,9 +189,14 @@ impl Manager {
                     }
                 }
                 JobKey::Direct(id) => {
-                    let folder = self.data.lock().directs.iter().find(|d| &d.id == id).map(|d| d.folder.clone());
-                    if let Some(folder) = folder {
-                        self.safe_remove(&folder);
+                    let target = self.data.lock().directs.iter().find(|d| &d.id == id).map(|d| match dest {
+                        // dossier de travail propre à cet envoi
+                        Dest::StorageTo => d.folder.clone(),
+                        // gardé sur le PC : son dossier est celui des téléchargements, seul le fichier part
+                        Dest::Local => d.final_path.clone().unwrap_or_default(),
+                    });
+                    if let Some(target) = target.filter(|t| !t.as_os_str().is_empty()) {
+                        self.safe_remove(&target);
                     }
                     if let Some(entry) = self.data.lock().direct_mut(id) {
                         entry.final_path = None;

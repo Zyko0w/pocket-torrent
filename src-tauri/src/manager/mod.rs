@@ -20,8 +20,8 @@ use crate::secrets::{self, Secret};
 use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};
 use crate::storage_to::StorageTo;
 use crate::store::{
-    Common, Delivery, DeliveryState, Dest, DirectEntry, Hold, Link, PendingTorrent, Priority, Scan, StoreData,
-    TorrentEntry, now_ms,
+    Common, Delivery, DeliveryState, Dest, DirectEntry, Hold, Link, PendingTorrent, Priority, Scan, SendOptions,
+    StoreData, TorrentEntry, now_ms,
 };
 use crate::system::{self, ProcessWatcher};
 use crate::{dns, netif};

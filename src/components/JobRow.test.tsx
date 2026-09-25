@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import defaults from '../test/defaultSettings.json'
 import { makeJob } from '../test/job'
 import { JobRow } from './JobRow'
 import { ToastProvider } from './Toast'
@@ -51,6 +52,33 @@ describe('JobRow', () => {
     renderRow()
     fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
     expect(screen.getByRole('menuitemradio', { name: /Priorité haute/ }).textContent).toContain('plus de débit que les autres')
+  })
+})
+
+describe('JobRow (envoi sur storage.to)', () => {
+  it('un téléchargement terminé gardé sur le PC peut être envoyé à la demande', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const job = makeJob({ status: 'done', finishedAt: 1, dest: 'local', delivery: null })
+    renderRow(job)
+    fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
+    vi.mocked(invoke).mockImplementation(async (cmd) => cmd === 'get_settings' ? { settings: defaults } : null)
+    fireEvent.click(screen.getByRole('menuitem', { name: /Envoyer sur storage\.to/ }))
+    // choix préremplis par les réglages, puis modifiés pour cet envoi
+    await screen.findByRole('combobox', { name: 'Durée de vie du lien' })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Effacer de storage.to' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Après 1 téléchargement' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Effacer les fichiers du PC/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer/ }))
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('send_job_online', {
+      id: job.id, options: { expiryDays: 7, maxDownloads: 1, deleteLocal: true }
+    }))
+    vi.mocked(invoke).mockImplementation(async () => null)
+  })
+
+  it('rien à proposer en cours de téléchargement', () => {
+    renderRow()
+    fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
+    expect(screen.queryByRole('menuitem', { name: /Envoyer sur storage\.to/ })).toBeNull()
   })
 })
 

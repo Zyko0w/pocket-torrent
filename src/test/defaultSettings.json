@@ -86,7 +86,8 @@
   },
   "storageTo": {
     "deleteAfterUpload": false,
-    "expiryDays": 7
+    "expiryDays": 7,
+    "maxDownloads": 0
   },
   "torrentPort": 0,
   "torrentPrevious": null,

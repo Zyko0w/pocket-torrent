@@ -158,6 +158,9 @@ pub struct Common {
     pub error: Option<String>,
     pub error_notified: bool,
     pub delivery: Option<Delivery>,
+    /// Choix de l'envoi fait à la demande (menu du téléchargement), à la place des réglages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub send_options: Option<SendOptions>,
     /// Analyse Microsoft Defender du téléchargement terminé (option des réglages).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scan: Option<Scan>,
@@ -181,6 +184,18 @@ impl Common {
     pub fn new(category: Option<String>, priority: Priority, dest: Dest) -> Self {
         Self { category, priority, dest, added_at: now_ms(), ..Default::default() }
     }
+}
+
+/// Envoi sur storage.to lancé à la demande, avec ses propres choix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendOptions {
+    /// Durée de vie des liens, en jours (1 à 7).
+    pub expiry_days: u8,
+    /// Effacement de storage.to après ce nombre de téléchargements (0 : sans limite).
+    pub max_downloads: u16,
+    /// Efface les fichiers du PC une fois envoyés.
+    pub delete_local: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

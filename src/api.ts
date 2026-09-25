@@ -199,7 +199,7 @@ export interface Settings {
   checkUpdates: boolean
   magnetPrevious: string | null
   torrentPrevious: string | null
-  storageTo: { expiryDays: number; deleteAfterUpload: boolean }
+  storageTo: { expiryDays: number; deleteAfterUpload: boolean; maxDownloads: number }
   rss: {
     intervalMinutes: number
     feeds: { id: string; name: string; url: string; include: string; exclude: string; category: string | null; enabled: boolean; skipRepeats: boolean; regex: boolean }[]
@@ -236,6 +236,14 @@ export interface AddOptions {
   onlyFiles: number[] | null
 }
 
+/** Envoi sur storage.to lancé depuis le menu d'un téléchargement terminé. */
+export interface SendOptions {
+  expiryDays: number
+  /** 0 : sans limite. */
+  maxDownloads: number
+  deleteLocal: boolean
+}
+
 export interface AddReport { added: number; failed: string[]; errors: string[] }
 
 export const api = {
@@ -244,6 +252,7 @@ export const api = {
   addLinks: (links: string[], options: AddOptions) => invoke<AddReport>('add_links', { links, options }),
   pause: (id: string) => invoke<void>('pause_job', { id }),
   resume: (id: string) => invoke<void>('resume_job', { id }),
+  sendOnline: (id: string, options: SendOptions) => invoke<void>('send_job_online', { id, options }),
   startNow: (id: string) => invoke<void>('start_job_now', { id }),
   pauseAll: () => invoke<number>('pause_all'),
   resumeAll: () => invoke<number>('resume_all'),

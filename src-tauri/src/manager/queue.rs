@@ -279,7 +279,9 @@ impl Manager {
                 .filter(|view| view.finished)
                 .filter_map(|view| {
                     let entry = data.torrents.get(&view.info_hash)?;
-                    if entry.common.hold.is_some() || entry.common.delivery.is_some() {
+                    // un torrent gardé sur le PC puis envoyé à la demande continue à partager normalement
+                    let online_only = entry.common.dest == Dest::StorageTo && entry.common.delivery.is_some();
+                    if entry.common.hold.is_some() || online_only {
                         return None;
                     }
                     let ratio_hit = seeding.ratio_limit > 0.0

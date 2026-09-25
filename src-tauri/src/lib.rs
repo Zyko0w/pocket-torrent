@@ -118,6 +118,7 @@ pub fn run() {
             commands::add_links,
             commands::pause_job,
             commands::resume_job,
+            commands::send_job_online,
             commands::start_job_now,
             commands::pause_all,
             commands::resume_all,

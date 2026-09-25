@@ -9,7 +9,7 @@ use crate::AppState;
 use crate::engine::{FileView, PeerView, Preview};
 use crate::manager::{AddOptions, AddReport, Overview, SettingsInput, SettingsView};
 use crate::settings::GameModeSwitch;
-use crate::store::Priority;
+use crate::store::{Priority, SendOptions};
 
 type CommandResult<T> = Result<T, String>;
 
@@ -55,6 +55,11 @@ pub async fn pause_job(state: State<'_, AppState>, id: String) -> CommandResult<
 #[tauri::command]
 pub async fn resume_job(state: State<'_, AppState>, id: String) -> CommandResult<()> {
     state.manager.resume(&id).await.map_err(message)
+}
+
+#[tauri::command]
+pub async fn send_job_online(state: State<'_, AppState>, id: String, options: SendOptions) -> CommandResult<()> {
+    state.manager.send_online(&id, options).map_err(message)
 }
 
 #[tauri::command]

@@ -4,7 +4,8 @@
 //! storage.to), les octets y partent directement, puis `upload/confirm` crée le fichier et renvoie
 //! son lien. Plusieurs fichiers (torrent à plusieurs fichiers) sont rangés dans une collection :
 //! un seul lien pour le tout. Sans compte, les fichiers expirent (1 à 7 jours) ; un jeton de compte
-//! gratuit lève la limite de 50 fichiers par jour.
+//! gratuit lève la limite de 50 fichiers par jour. Une limite de téléchargements peut aussi effacer
+//! le fichier de storage.to dès qu'elle est atteinte.
 //!
 //! Chaque création renvoie un « jeton de propriétaire » : c'est lui qui permet ensuite de supprimer
 //! le fichier, quels que soient le réseau ou le jeton de visiteur. Il est gardé avec le lien.
@@ -19,7 +20,7 @@ use serde_json::json;
 use tokio::io::AsyncReadExt;
 
 use crate::secrets::{self, Secret};
-use crate::settings::StorageToSettings;
+use crate::settings::{MAX_DOWNLOADS, StorageToSettings};
 
 /// Adresse de l'API : seule destination des requêtes (hors adresses d'envoi signées qu'elle fournit).
 pub const API: &str = "https://storage.to/api";
@@ -30,6 +31,8 @@ pub struct StorageTo {
     visitor_token: String,
     account_token: Option<String>,
     expiry_days: u8,
+    /// 0 : sans limite.
+    max_downloads: u16,
 }
 
 /// Fichier (ou collection) créé : lien de partage et preuve de propriété.
@@ -110,12 +113,26 @@ impl StorageTo {
             visitor_token,
             account_token: secrets::get(Secret::StorageToToken),
             expiry_days: settings.expiry_days.clamp(1, 7),
+            max_downloads: settings.max_downloads.min(MAX_DOWNLOADS),
         })
+    }
+
+    /// Durée de vie et limite de téléchargements choisies pour un envoi, à la place des réglages.
+    pub fn with_limits(mut self, expiry_days: u8, max_downloads: u16) -> Self {
+        self.expiry_days = expiry_days.clamp(1, 7);
+        self.max_downloads = max_downloads.min(MAX_DOWNLOADS);
+        self
     }
 
     #[cfg(test)]
     fn for_tests(base: &str) -> Self {
-        Self { base: base.to_owned(), visitor_token: "visiteur".into(), account_token: None, expiry_days: 2 }
+        Self {
+            base: base.to_owned(),
+            visitor_token: "visiteur".into(),
+            account_token: None,
+            expiry_days: 2,
+            max_downloads: 0,
+        }
     }
 
     fn request(&self, client: &reqwest::Client, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
@@ -162,7 +179,7 @@ impl StorageTo {
             owner_token: created.owner_token,
             expires_at: collection.expires_at,
         };
-        self.set_expiry(client, "collection", &shared).await?;
+        self.set_limits(client, "collection", &shared).await?;
         Ok(shared)
     }
 
@@ -213,7 +230,7 @@ impl StorageTo {
         let file = confirmed.file;
         let shared =
             Shared { id: file.id, url: file.url, owner_token: confirmed.owner_token, expires_at: file.expires_at };
-        self.set_expiry(client, "file", &shared).await?;
+        self.set_limits(client, "file", &shared).await?;
         Ok(shared)
     }
 
@@ -280,22 +297,27 @@ impl StorageTo {
         result
     }
 
-    /// Durée de vie choisie dans les réglages (3 jours par défaut chez storage.to).
-    async fn set_expiry(&self, client: &reqwest::Client, kind: &str, shared: &Shared) -> anyhow::Result<()> {
+    /// Durée de vie (3 jours par défaut chez storage.to) et limite de téléchargements. Une
+    /// collection et chacun de ses fichiers ont leurs propres liens : la limite est posée sur tous.
+    async fn set_limits(&self, client: &reqwest::Client, kind: &str, shared: &Shared) -> anyhow::Result<()> {
         // identifiant renvoyé par le serveur, mis dans l'adresse de la requête suivante
         if !valid_id(&shared.id) {
             bail!("identifiant storage.to invalide dans la réponse");
         }
-        if self.expiry_days == 3 {
-            return Ok(());
-        }
-        let request = self
-            .owned(
-                self.request(client, reqwest::Method::POST, &format!("/{kind}/{}/expiry", shared.id)),
+        let post = |setting: &str| {
+            self.owned(
+                self.request(client, reqwest::Method::POST, &format!("/{kind}/{}/{setting}", shared.id)),
                 &shared.owner_token,
             )
-            .json(&json!({ "days": self.expiry_days }));
-        api_json::<serde_json::Value>(request, "durée de vie du lien").await?;
+        };
+        if self.expiry_days != 3 {
+            let request = post("expiry").json(&json!({ "days": self.expiry_days }));
+            api_json::<serde_json::Value>(request, "durée de vie du lien").await?;
+        }
+        if self.max_downloads > 0 {
+            let request = post("max-downloads").json(&json!({ "max_downloads": self.max_downloads }));
+            api_json::<serde_json::Value>(request, "limite de téléchargements").await?;
+        }
         Ok(())
     }
 
@@ -424,6 +446,7 @@ mod tests {
         parts: Vec<(u32, usize)>,
         confirmed: Vec<serde_json::Value>,
         expiry: Vec<(String, u64)>,
+        max_downloads: Vec<(String, u64)>,
         deleted: Vec<String>,
         owner_headers: Vec<String>,
     }
@@ -511,6 +534,15 @@ mod tests {
                 }),
             )
             .route(
+                "/api/{kind}/{id}/max-downloads",
+                post(|State(s): State<FakeState>, UrlPath((_kind, id)): UrlPath<(String, String)>, headers: HeaderMap, Json(body): Json<serde_json::Value>| async move {
+                    let mut s = s.lock().unwrap();
+                    s.owner_headers.push(headers["authorization"].to_str().unwrap().to_owned());
+                    s.max_downloads.push((id, body["max_downloads"].as_u64().unwrap()));
+                    Json(json!({ "success": true }))
+                }),
+            )
+            .route(
                 "/api/{kind}/{id}",
                 delete(|State(s): State<FakeState>, UrlPath((_kind, id)): UrlPath<(String, String)>, headers: HeaderMap| async move {
                     if headers.get("authorization").map(|h| h.to_str().unwrap()) != Some("Owner owner_file") {
@@ -553,7 +585,32 @@ mod tests {
         // durée de vie réglée à 2 jours, avec la preuve de propriété du fichier
         assert_eq!(s.expiry, vec![("FQxyz1234".into(), 2)]);
         assert_eq!(s.owner_headers, vec!["Owner owner_file"]);
+        // sans limite de téléchargements par défaut : rien à régler
+        assert!(s.max_downloads.is_empty());
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_cap_is_set_on_the_collection_and_each_file() {
+        let (base, state) = fake_server(false).await;
+        let client = StorageTo::for_tests(&base).with_limits(3, 1);
+        let http = reqwest::Client::new();
+        let (path, _) = sandbox_file(4096);
+        let collection = client.create_collection(&http, 1).await.unwrap();
+        client.upload(&http, &path, "Film de test.mkv", Some(&collection), |_| {}).await.unwrap();
+        let s = state.lock().unwrap();
+        assert_eq!(s.max_downloads, vec![("ABC123xyz".into(), 1), ("FQxyz1234".into(), 1)]);
+        assert_eq!(s.owner_headers, vec!["Owner owner_coll", "Owner owner_file"]);
+        // 3 jours : durée par défaut de storage.to, aucune requête
+        assert!(s.expiry.is_empty());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn limits_stay_within_what_storage_to_accepts() {
+        let client = StorageTo::for_tests("http://x").with_limits(30, 5000);
+        assert_eq!((client.expiry_days, client.max_downloads), (7, MAX_DOWNLOADS));
+        assert_eq!(StorageTo::for_tests("http://x").with_limits(0, 0).expiry_days, 1);
     }
 
     #[tokio::test]

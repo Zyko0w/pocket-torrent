@@ -5,6 +5,7 @@ import { api, errorMessage, type SecretsInput, type SettingsView } from '../../a
 import { useToast } from '../Toast'
 import { Check, SecretField, Section, resetOf, type SectionProps } from './fields'
 import { Select } from '../Select'
+import { DOWNLOAD_CAP_OPTIONS, EXPIRY_OPTIONS } from '../SendDialog'
 
 interface StorageToSectionProps extends SectionProps {
   /** Jeton déjà rangé dans Windows (jamais sa valeur). */
@@ -34,15 +35,23 @@ export function StorageToSection (props: StorageToSectionProps) {
   return (
     <Section
       id='s-storage-to' title='storage.to' reset={resetOf(props, ['storageTo'])}
-      intro='Envoi des fichiers terminés sur storage.to, avec un lien de partage. Choix « Envoyer sur storage.to » dans la zone d’ajout.'
+      intro='Envoi des fichiers terminés sur storage.to, avec un lien de partage : choix « Envoyer sur storage.to » dans la zone d’ajout, ou menu ⋯ d’un téléchargement terminé (ces réglages y sont préremplis).'
     >
       <div className='field'>
         <label htmlFor='storage-expiry'>Durée de vie des liens</label>
         <Select
           id='storage-expiry' ariaLabel='Durée de vie des liens' value={String(storage.expiryDays)} onChange={(v) => set({ expiryDays: Number(v) })}
-          options={[1, 2, 3, 4, 5, 6, 7].map((days) => ({ value: String(days), label: `${days} jour${days > 1 ? 's' : ''}` }))}
+          options={EXPIRY_OPTIONS}
         />
         <p className='help'>Les fichiers sont ensuite effacés de storage.to.</p>
+      </div>
+      <div className='field'>
+        <label htmlFor='storage-cap'>Effacer de storage.to</label>
+        <Select
+          id='storage-cap' ariaLabel='Effacer de storage.to' value={String(storage.maxDownloads)} onChange={(v) => set({ maxDownloads: Number(v) })}
+          options={DOWNLOAD_CAP_OPTIONS}
+        />
+        <p className='help'>Le lien cesse de fonctionner dès que ce nombre de téléchargements est atteint.</p>
       </div>
       <SecretField
         id='storage-token' label='Jeton de compte storage.to (facultatif)' isSet={saved.storageToToken}
@@ -55,7 +64,7 @@ export function StorageToSection (props: StorageToSectionProps) {
       <Check
         checked={storage.deleteAfterUpload} onChange={(deleteAfterUpload) => set({ deleteAfterUpload })}
         label='Effacer les fichiers du PC une fois envoyés'
-        help='Attention : les liens expirent, les fichiers ne seront alors plus nulle part.'
+        help='Pour « Envoyer sur storage.to » choisi à l’ajout (le menu ⋯ le demande à chaque envoi). Attention : les liens expirent, les fichiers ne seront alors plus nulle part.'
       />
       <div>
         <button type='button' className='btn btn-ghost btn-sm' disabled={testing} onClick={test}>

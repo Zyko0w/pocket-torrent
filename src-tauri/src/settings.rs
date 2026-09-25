@@ -357,6 +357,9 @@ pub struct RssFeed {
     pub regex: bool,
 }
 
+/// Limite de téléchargements acceptée par storage.to avant effacement.
+pub const MAX_DOWNLOADS: u16 = 1000;
+
 /// Envoi des fichiers terminés sur storage.to (voir storage_to.rs).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -365,11 +368,13 @@ pub struct StorageToSettings {
     pub expiry_days: u8,
     /// Efface les fichiers du PC une fois envoyés. Désactivé par défaut : les liens expirent.
     pub delete_after_upload: bool,
+    /// Fichiers effacés de storage.to après ce nombre de téléchargements (0 : sans limite).
+    pub max_downloads: u16,
 }
 
 impl Default for StorageToSettings {
     fn default() -> Self {
-        Self { expiry_days: 7, delete_after_upload: false }
+        Self { expiry_days: 7, delete_after_upload: false, max_downloads: 0 }
     }
 }
 
@@ -595,6 +600,9 @@ impl Settings {
 
         if !(1..=7).contains(&self.storage_to.expiry_days) {
             return Err("storage.to : durée des liens entre 1 et 7 jours.".into());
+        }
+        if self.storage_to.max_downloads > MAX_DOWNLOADS {
+            return Err(format!("storage.to : au plus {MAX_DOWNLOADS} téléchargements avant effacement."));
         }
 
         self.vpn.adapter = self.vpn.adapter.trim().to_owned();

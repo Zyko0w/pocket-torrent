@@ -12,6 +12,7 @@ import { Menu, type MenuItem } from './Menu'
 import { PeersPanel } from './PeersPanel'
 import { SpeedChart } from './SpeedChart'
 import { ProgressBar, type ProgressTone } from './ProgressBar'
+import { SendDialog } from './SendDialog'
 import { PieceMapPanel } from './PieceMapPanel'
 import { TrackersPanel } from './TrackersPanel'
 import { useToast } from './Toast'
@@ -144,6 +145,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
   const toast = useToast()
   const [detail, setDetail] = useState<Detail | null>(null)
   const [limitOpen, setLimitOpen] = useState(false)
+  const [sending, setSending] = useState(false)
   const [busy, setBusy] = useState(false)
   const [limit, setLimit] = useState(String(job.limitKbps))
   const status = statusOf(job)
@@ -209,6 +211,15 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
   }
   if (!isPending && !['done', 'error', 'seeding'].includes(job.status)) {
     menu.push({ label: 'Limiter la vitesse…', icon: <Gauge size={16} />, separated: true, onSelect: () => { setLimit(String(job.limitKbps)); setLimitOpen(true) } })
+  }
+  if (finished && !job.delivery && (!isTorrent || job.inEngine)) {
+    menu.push({
+      label: 'Envoyer sur storage.to',
+      hint: 'Lien de partage, durée de vie et limite de téléchargements au choix',
+      icon: <CloudArrowUp size={16} />,
+      separated: true,
+      onSelect: () => setSending(true)
+    })
   }
   if (isTorrent && !isPending) {
     menu.push({
@@ -295,6 +306,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
       {job.error && <p className='job-alert tone-danger selectable'><WarningCircle size={16} /> {job.error}</p>}
       {job.warning && !job.error && <p className='job-alert tone-warning'><HardDrives size={16} /> {job.warning}</p>}
       <ScanLine job={job} />
+      {sending && <SendDialog job={job} onClose={() => setSending(false)} onSent={onChanged} />}
 
       {limitOpen && (
         <form
