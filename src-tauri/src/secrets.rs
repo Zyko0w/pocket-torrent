@@ -1,12 +1,18 @@
-//! Secrets (jetons storage.to, configuration WireGuard) rangés dans le Gestionnaire
+//! Secrets (jetons des services d'envoi en ligne, configuration WireGuard) rangés dans le Gestionnaire
 //! d'identification de Windows, jamais dans les fichiers de réglages ni renvoyés à l'interface.
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Secret {
     /// Jeton de compte storage.to (facultatif : lève les limites des envois anonymes).
     StorageToToken,
     /// Jeton de visiteur storage.to : identifie les envois anonymes de ce PC.
     StorageToVisitor,
+    /// Jeton de compte GoFile (facultatif : sinon un compte invité par envoi).
+    GofileToken,
+    /// Identifiant (« user hash ») du compte VikingFile (facultatif : sans lui, pas de suppression).
+    VikingfileUser,
+    /// En-têtes d'un hébergeur personnalisé (clés d'API), par identifiant de l'hébergeur.
+    CustomHostHeaders(String),
     /// Fichier de configuration WireGuard (contient la clé privée du tunnel).
     WireguardConfig,
     /// Mot de passe du proxy SOCKS5.
@@ -14,18 +20,22 @@ pub enum Secret {
 }
 
 impl Secret {
-    fn target(self) -> &'static str {
-        match self {
+    fn target(&self) -> String {
+        let fixed = match self {
             Secret::WireguardConfig => "PocketTorrent/wireguard-conf",
             Secret::StorageToToken => "PocketTorrent/storage-to-token",
             Secret::StorageToVisitor => "PocketTorrent/storage-to-visitor",
             Secret::ProxyPassword => "PocketTorrent/proxy-password",
-        }
+            Secret::GofileToken => "PocketTorrent/gofile-token",
+            Secret::VikingfileUser => "PocketTorrent/vikingfile-user",
+            Secret::CustomHostHeaders(id) => return format!("PocketTorrent/custom-host-{id}"),
+        };
+        fixed.to_owned()
     }
 }
 
 pub fn get(secret: Secret) -> Option<String> {
-    imp::read(secret.target()).filter(|value| !value.is_empty())
+    imp::read(&secret.target()).filter(|value| !value.is_empty())
 }
 
 pub fn is_set(secret: Secret) -> bool {
@@ -36,10 +46,10 @@ pub fn is_set(secret: Secret) -> bool {
 pub fn set(secret: Secret, value: &str) -> anyhow::Result<()> {
     let value = value.trim();
     if value.is_empty() {
-        imp::delete(secret.target());
+        imp::delete(&secret.target());
         return Ok(());
     }
-    imp::write(secret.target(), value)
+    imp::write(&secret.target(), value)
 }
 
 #[cfg(windows)]

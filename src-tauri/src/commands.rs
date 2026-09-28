@@ -8,7 +8,7 @@ use tauri::State;
 use crate::AppState;
 use crate::engine::{FileView, PeerView, Preview};
 use crate::manager::{AddOptions, AddReport, Overview, SettingsInput, SettingsView};
-use crate::settings::GameModeSwitch;
+use crate::settings::{GameModeSwitch, UploadHost};
 use crate::store::{Priority, SendOptions};
 
 type CommandResult<T> = Result<T, String>;
@@ -391,8 +391,8 @@ pub async fn tunnel_disconnect(state: State<'_, AppState>) -> CommandResult<()> 
 }
 
 #[tauri::command]
-pub async fn test_storage_to(state: State<'_, AppState>) -> CommandResult<String> {
-    state.manager.test_storage_to().await.map_err(message)
+pub async fn test_upload_host(state: State<'_, AppState>, host: UploadHost) -> CommandResult<String> {
+    state.manager.test_upload_host(host).await.map_err(message)
 }
 
 // ------------------------------------------------------------ performance (§2.2)

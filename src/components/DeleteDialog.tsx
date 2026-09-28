@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Job } from '../api'
+import { hostLabel } from '../uploadHosts'
 import { Modal } from './Modal'
 
 interface DeleteDialogProps {
@@ -14,7 +15,8 @@ export function DeleteDialog ({ job, onCancel, onConfirm }: DeleteDialogProps) {
   const [deleteSource, setDeleteSource] = useState(false)
   const finished = job ? job.status === 'done' || job.status === 'seeding' : false
   const running = Boolean(job && !finished && job.status !== 'error')
-  const online = Boolean(job?.delivery?.links.length)
+  // envoi sans compte chez un service qui ne permet pas de supprimer : rien à proposer
+  const online = Boolean(job?.delivery?.links.length) && job?.delivery?.deletable !== false
   const source = job?.sourceFile ?? null
   // fichiers déjà envoyés puis effacés du PC : rien à supprimer localement
   const filesOnDisk = Boolean(job && !(job.kind === 'torrent' && !job.inEngine) && !job.id.startsWith('p:'))
@@ -69,7 +71,7 @@ export function DeleteDialog ({ job, onCancel, onConfirm }: DeleteDialogProps) {
             <label className='check'>
               <input type='checkbox' checked={deleteOnline} onChange={(e) => setDeleteOnline(e.target.checked)} />
               <span>
-                Supprimer aussi les fichiers sur storage.to
+                Supprimer aussi les fichiers sur {hostLabel(job?.delivery?.host, job?.delivery?.hostName)}
                 <small>Les liens partagés ne fonctionneront plus.</small>
               </span>
             </label>

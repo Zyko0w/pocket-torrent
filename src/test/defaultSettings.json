@@ -85,8 +85,10 @@
     "timeLimitMinutes": 0
   },
   "storageTo": {
+    "customHosts": [],
     "deleteAfterUpload": false,
     "expiryDays": 7,
+    "host": "storageTo",
     "maxDownloads": 0
   },
   "torrentPort": 0,

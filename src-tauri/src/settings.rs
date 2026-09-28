@@ -360,10 +360,167 @@ pub struct RssFeed {
 /// Limite de téléchargements acceptée par storage.to avant effacement.
 pub const MAX_DOWNLOADS: u16 = 1000;
 
-/// Envoi des fichiers terminés sur storage.to (voir storage_to.rs).
+/// Service d'hébergement des fichiers envoyés en ligne.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum UploadHost {
+    /// storage.to (voir hosts/storage_to.rs) : durée de vie et limite de téléchargements réglables.
+    #[default]
+    StorageTo,
+    /// gofile.io (voir hosts/gofile.rs) : un dossier par téléchargement, effacé après inactivité.
+    Gofile,
+    /// vikingfile.com (voir hosts/vikingfile.rs) : un lien par fichier.
+    Vikingfile,
+    /// Hébergeur ajouté par l'utilisateur (voir hosts/custom.rs), par son identifiant.
+    Custom(String),
+}
+
+impl UploadHost {
+    /// Nom affiché ; celui d'un hébergeur personnalisé est dans ses réglages (`Host::name`).
+    pub fn label(&self) -> &'static str {
+        match self {
+            UploadHost::StorageTo => "storage.to",
+            UploadHost::Gofile => "GoFile",
+            UploadHost::Vikingfile => "VikingFile",
+            UploadHost::Custom(_) => "l'hébergeur personnalisé",
+        }
+    }
+}
+
+/// Enregistré en texte : « storageTo », « gofile », « vikingfile » ou « custom:<identifiant> ».
+impl Serialize for UploadHost {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            UploadHost::StorageTo => serializer.serialize_str("storageTo"),
+            UploadHost::Gofile => serializer.serialize_str("gofile"),
+            UploadHost::Vikingfile => serializer.serialize_str("vikingfile"),
+            UploadHost::Custom(id) => serializer.serialize_str(&format!("custom:{id}")),
+        }
+    }
+}
+
+/// Un service inconnu (autre version) devient storage.to, le service d'origine.
+impl<'de> Deserialize<'de> for UploadHost {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Ok(match text.as_str() {
+            "gofile" => UploadHost::Gofile,
+            "vikingfile" => UploadHost::Vikingfile,
+            _ => match text.strip_prefix("custom:") {
+                Some(id) if valid_custom_id(id) => UploadHost::Custom(id.to_owned()),
+                _ => UploadHost::StorageTo,
+            },
+        })
+    }
+}
+
+/// Hébergeurs personnalisés au plus.
+pub const MAX_CUSTOM_HOSTS: usize = 10;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CustomMethod {
+    /// POST d'un formulaire multipart (le cas courant ; « MultipartFormData » des fichiers .sxcu).
+    #[default]
+    Multipart,
+    /// PUT du fichier brut (« Binary »).
+    Put,
+}
+
+/// Hébergeur de fichiers ajouté par l'utilisateur (même principe que les fichiers .sxcu de
+/// ShareX). Ses en-têtes (clés d'API) sont dans le Gestionnaire d'identification de Windows.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CustomHost {
+    pub id: String,
+    pub name: String,
+    /// Adresse d'envoi (HTTPS) ; « {filename} » y est remplacé par le nom du fichier.
+    pub url: String,
+    pub method: CustomMethod,
+    /// Nom du champ du fichier dans le formulaire (multipart).
+    pub file_field: String,
+    /// Autres champs du formulaire (multipart).
+    pub form_fields: Vec<FormField>,
+    /// Chemin du lien dans la réponse JSON (« data.url », « files.0.url ») ; vide : la réponse
+    /// est le lien lui-même (texte).
+    pub link_path: String,
+    /// Modèle du lien, « {value} » remplacé par la valeur lue ; vide : la valeur telle quelle.
+    pub link_template: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FormField {
+    pub name: String,
+    pub value: String,
+}
+
+pub fn valid_custom_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 32 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+impl CustomHost {
+    /// Vérifie et nettoie la configuration (enregistrement des réglages).
+    fn normalize(&mut self) -> Result<(), String> {
+        self.name = self.name.trim().to_owned();
+        let name = if self.name.is_empty() { "sans nom".to_owned() } else { self.name.clone() };
+        let fail = |what: &str| Err(format!("Hébergeur « {name} » : {what}."));
+        if !valid_custom_id(&self.id) {
+            return fail("identifiant invalide");
+        }
+        if self.name.is_empty() || self.name.chars().count() > 40 || self.name.contains(char::is_control) {
+            return fail("nom de 1 à 40 caractères");
+        }
+        self.url = self.url.trim().to_owned();
+        let url_ok = self.url.len() <= 2000
+            && url::Url::parse(&self.url.replace("{filename}", "x"))
+                .is_ok_and(|u| u.scheme() == "https" && u.host_str().is_some_and(|h| !h.is_empty()));
+        if !url_ok {
+            return fail("adresse d'envoi en https:// requise");
+        }
+        // mis tels quels dans l'en-tête du formulaire : ni guillemets ni retours à la ligne
+        let plain = |text: &str, max: usize| {
+            !text.is_empty() && text.len() <= max && !text.contains(|c: char| c.is_control() || c == '"')
+        };
+        self.file_field = self.file_field.trim().to_owned();
+        if self.method == CustomMethod::Multipart && !plain(&self.file_field, 100) {
+            return fail("nom du champ du fichier manquant ou invalide");
+        }
+        self.form_fields.retain(|f| !f.name.trim().is_empty());
+        if self.form_fields.len() > 20 {
+            return fail("20 champs de formulaire au plus");
+        }
+        for field in &mut self.form_fields {
+            field.name = field.name.trim().to_owned();
+            if !plain(&field.name, 100) || field.value.len() > 1000 || field.value.contains(char::is_control) {
+                return fail("champ de formulaire invalide");
+            }
+        }
+        self.link_path = self.link_path.trim().to_owned();
+        if self.link_path.len() > 200
+            || !self.link_path.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        {
+            return fail("chemin du lien invalide (ex. : data.url)");
+        }
+        self.link_template = self.link_template.trim().to_owned();
+        if !self.link_template.is_empty()
+            && (!self.link_template.contains("{value}")
+                || !self.link_template.starts_with("https://")
+                || self.link_template.len() > 500)
+        {
+            return fail("modèle du lien en https:// avec « {value} »");
+        }
+        Ok(())
+    }
+}
+
+/// Envoi des fichiers terminés en ligne (storage.to, GoFile ou VikingFile).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct StorageToSettings {
+    /// Service utilisé par « Mettre en ligne une fois fini » choisi à l'ajout, et proposé par le menu ⋯.
+    pub host: UploadHost,
+    /// Hébergeurs ajoutés par l'utilisateur.
+    pub custom_hosts: Vec<CustomHost>,
     /// Durée de vie des liens, en jours (1 à 7 ; les fichiers disparaissent ensuite de storage.to).
     pub expiry_days: u8,
     /// Efface les fichiers du PC une fois envoyés. Désactivé par défaut : les liens expirent.
@@ -374,7 +531,13 @@ pub struct StorageToSettings {
 
 impl Default for StorageToSettings {
     fn default() -> Self {
-        Self { expiry_days: 7, delete_after_upload: false, max_downloads: 0 }
+        Self {
+            host: UploadHost::StorageTo,
+            custom_hosts: Vec::new(),
+            expiry_days: 7,
+            delete_after_upload: false,
+            max_downloads: 0,
+        }
     }
 }
 
@@ -603,6 +766,22 @@ impl Settings {
         }
         if self.storage_to.max_downloads > MAX_DOWNLOADS {
             return Err(format!("storage.to : au plus {MAX_DOWNLOADS} téléchargements avant effacement."));
+        }
+        if self.storage_to.custom_hosts.len() > MAX_CUSTOM_HOSTS {
+            return Err(format!("Envoi en ligne : {MAX_CUSTOM_HOSTS} hébergeurs personnalisés au plus."));
+        }
+        let mut ids = HashSet::new();
+        for host in &mut self.storage_to.custom_hosts {
+            host.normalize()?;
+            if !ids.insert(host.id.clone()) {
+                return Err("Envoi en ligne : deux hébergeurs personnalisés ont le même identifiant.".into());
+            }
+        }
+        // hébergeur choisi puis supprimé : retour au service d'origine
+        if let UploadHost::Custom(id) = &self.storage_to.host
+            && !ids.contains(id)
+        {
+            self.storage_to.host = UploadHost::StorageTo;
         }
 
         self.vpn.adapter = self.vpn.adapter.trim().to_owned();
@@ -851,6 +1030,41 @@ mod normalize_tests {
         Settings { download_dir: PathBuf::from(r"C:\T"), ..Default::default() }
     }
 
+    fn custom(change: impl Fn(&mut CustomHost)) -> CustomHost {
+        let mut host = CustomHost {
+            id: "h1".into(),
+            name: "Mon hébergeur".into(),
+            url: "https://a.example/upload/{filename}".into(),
+            file_field: "file".into(),
+            link_path: "data.url".into(),
+            ..Default::default()
+        };
+        change(&mut host);
+        host
+    }
+
+    #[test]
+    fn custom_hosts_are_cleaned_and_a_removed_choice_falls_back() {
+        let mut settings = base();
+        settings.storage_to.custom_hosts = vec![custom(|h| {
+            h.name = "  Mon hébergeur ".into();
+            h.form_fields = vec![FormField::default(), FormField { name: " reqtype ".into(), value: "x".into() }];
+        })];
+        settings.storage_to.host = UploadHost::Custom("h1".into());
+        settings.normalize().unwrap();
+        let host = &settings.storage_to.custom_hosts[0];
+        assert_eq!(host.name, "Mon hébergeur");
+        assert_eq!(host.form_fields, vec![FormField { name: "reqtype".into(), value: "x".into() }]);
+        assert_eq!(settings.storage_to.host, UploadHost::Custom("h1".into()));
+        settings.storage_to.custom_hosts.clear();
+        settings.normalize().unwrap();
+        assert_eq!(settings.storage_to.host, UploadHost::StorageTo);
+        let json = serde_json::to_string(&UploadHost::Custom("h1".into())).unwrap();
+        assert_eq!(json, "\"custom:h1\"");
+        assert_eq!(serde_json::from_str::<UploadHost>(&json).unwrap(), UploadHost::Custom("h1".into()));
+        assert_eq!(serde_json::from_str::<UploadHost>("\"custom:../x\"").unwrap(), UploadHost::StorageTo);
+    }
+
     fn category(name: &str, folder: &str) -> Category {
         Category { id: String::new(), name: name.into(), folder: folder.into() }
     }
@@ -896,6 +1110,27 @@ mod normalize_tests {
             ("en cours = final", Box::new(|s| s.incomplete_dir = r"C:\T\".into())),
             ("en cours relatif", Box::new(|s| s.incomplete_dir = "tmp".into())),
             ("storage.to", Box::new(|s| s.storage_to.expiry_days = 8)),
+            (
+                "hébergeur http",
+                Box::new(|s| s.storage_to.custom_hosts = vec![custom(|h| h.url = "http://a.example/up".into())]),
+            ),
+            ("hébergeur sans nom", Box::new(|s| s.storage_to.custom_hosts = vec![custom(|h| h.name = "  ".into())])),
+            (
+                "hébergeur champ",
+                Box::new(|s| s.storage_to.custom_hosts = vec![custom(|h| h.file_field = "a\"b".into())]),
+            ),
+            (
+                "hébergeur chemin",
+                Box::new(|s| s.storage_to.custom_hosts = vec![custom(|h| h.link_path = "data[0]".into())]),
+            ),
+            (
+                "hébergeur modèle",
+                Box::new(|s| {
+                    s.storage_to.custom_hosts = vec![custom(|h| h.link_template = "https://a.example/x".into())]
+                }),
+            ),
+            ("hébergeur identifiant", Box::new(|s| s.storage_to.custom_hosts = vec![custom(|h| h.id = "../x".into())])),
+            ("hébergeurs en double", Box::new(|s| s.storage_to.custom_hosts = vec![custom(|_| {}), custom(|_| {})])),
             ("carte VPN vide", Box::new(|s| s.vpn.mode = VpnMode::Adapter)),
             (
                 "proxy hôte",

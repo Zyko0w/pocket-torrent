@@ -16,6 +16,7 @@ import { SendDialog } from './SendDialog'
 import { PieceMapPanel } from './PieceMapPanel'
 import { TrackersPanel } from './TrackersPanel'
 import { useToast } from './Toast'
+import { hostLabel } from '../uploadHosts'
 
 type Detail = 'files' | 'speed' | 'peers' | 'trackers' | 'pieces' | 'links'
 
@@ -186,7 +187,8 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
     }
   }
 
-  // envoi sur storage.to terminé : lien du dossier complet (collection) s'il y en a un, sinon du fichier
+  // envoi en ligne terminé : lien du dossier complet (collection) s'il y en a un, sinon du fichier
+  const hostName = hostLabel(job.delivery?.host, job.delivery?.hostName)
   const links = job.delivery?.state === 'done' ? job.delivery.links : []
   const shareLink = links.find((l) => l.kind === 'collection') ?? links[0]
   const linkExpired = job.delivery?.expiresAt != null && job.delivery.expiresAt < Date.now()
@@ -219,8 +221,8 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
   }
   if (finished && !job.delivery && (!isTorrent || job.inEngine)) {
     menu.push({
-      label: 'Envoyer sur storage.to',
-      hint: 'Lien de partage, durée de vie et limite de téléchargements au choix',
+      label: 'Envoyer en ligne…',
+      hint: 'Lien de partage sur storage.to, GoFile ou VikingFile',
       icon: <CloudArrowUp size={16} />,
       separated: true,
       onSelect: () => setSending(true)
@@ -260,7 +262,7 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
             {categoryName && <span className='tag'>{categoryName}</span>}
             {job.priority !== 'normal' && !finished && <span className={`tag${job.priority === 'high' ? ' accent' : ''}`}>{PRIORITY_LABELS[job.priority]}</span>}
             {job.kind === 'http' && <span className='tag'>Direct</span>}
-            {(job.dest === 'storageTo' || job.delivery?.state === 'done') && <span className='tag' title='Envoyé sur storage.to une fois terminé'><CloudArrowUp size={11} /> En ligne</span>}
+            {(job.dest === 'storageTo' || job.delivery?.state === 'done') && <span className='tag' title={job.delivery ? `Envoyé sur ${hostName}` : 'Envoyé en ligne une fois terminé'}><CloudArrowUp size={11} /> En ligne</span>}
           </div>
           {showProgress && (
             <ProgressBar
@@ -291,8 +293,8 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
               )}
           {shareLink && (
             <button
-              type='button' className='icon-btn' title={linkExpired ? 'Lien storage.to expiré' : 'Copier le lien storage.to'}
-              aria-label='Copier le lien storage.to' disabled={linkExpired} onClick={() => run(() => copyText(shareLink.url), 'Lien storage.to copié')}
+              type='button' className='icon-btn' title={linkExpired ? `Lien ${hostName} expiré` : `Copier le lien ${hostName}`}
+              aria-label={`Copier le lien ${hostName}`} disabled={linkExpired} onClick={() => run(() => copyText(shareLink.url), `Lien ${hostName} copié`)}
             >
               <LinkSimple size={18} />
             </button>

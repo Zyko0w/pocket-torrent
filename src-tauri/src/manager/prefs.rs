@@ -4,11 +4,22 @@ use super::*;
 
 impl Manager {
     pub fn settings_view(&self) -> SettingsView {
+        let settings = self.settings();
+        let custom_host_headers = settings
+            .storage_to
+            .custom_hosts
+            .iter()
+            .filter(|h| secrets::is_set(Secret::CustomHostHeaders(h.id.clone())))
+            .map(|h| h.id.clone())
+            .collect();
         SettingsView {
-            settings: self.settings(),
+            settings,
             secrets: SecretsSet {
                 storage_to_token: secrets::is_set(Secret::StorageToToken),
+                gofile_token: secrets::is_set(Secret::GofileToken),
+                vikingfile_user: secrets::is_set(Secret::VikingfileUser),
                 proxy_password: secrets::is_set(Secret::ProxyPassword),
+                custom_host_headers,
             },
             start_with_windows: system::start_with_windows_enabled(),
             magnet_handler: system::link_handler_enabled(),
@@ -31,8 +42,37 @@ impl Manager {
                 .with_context(|| format!("Impossible de créer le dossier « {} »", dir.display()))?;
         }
 
-        if let Some(token) = &input.secrets.storage_to_token {
-            secrets::set(Secret::StorageToToken, token)?;
+        // en-têtes des hébergeurs personnalisés : tous vérifiés avant d'enregistrer quoi que ce soit
+        let custom = &next.storage_to.custom_hosts;
+        for (id, headers) in &input.secrets.custom_host_headers {
+            let host =
+                custom.iter().find(|h| &h.id == id).context("Envoi en ligne : hébergeur personnalisé inconnu.")?;
+            if headers.len() > 8192 {
+                bail!("Hébergeur « {} » : en-têtes trop longs.", host.name);
+            }
+            crate::hosts::custom::parse_headers(headers)
+                .map_err(|err| anyhow::anyhow!("Hébergeur « {} » : {err:#}.", host.name))?;
+        }
+        for (id, headers) in &input.secrets.custom_host_headers {
+            secrets::set(Secret::CustomHostHeaders(id.clone()), headers)?;
+        }
+        // hébergeur retiré : ses clés d'API aussi
+        for removed in current.storage_to.custom_hosts.iter().filter(|h| !custom.iter().any(|n| n.id == h.id)) {
+            secrets::set(Secret::CustomHostHeaders(removed.id.clone()), "")?;
+        }
+
+        let accounts = [
+            (&input.secrets.storage_to_token, Secret::StorageToToken),
+            (&input.secrets.gofile_token, Secret::GofileToken),
+            (&input.secrets.vikingfile_user, Secret::VikingfileUser),
+        ];
+        for (value, secret) in accounts {
+            if let Some(value) = value {
+                if value.len() > 512 || value.contains(char::is_control) {
+                    bail!("Envoi en ligne : jeton de compte invalide.");
+                }
+                secrets::set(secret, value)?;
+            }
         }
         let mut proxy_changed = false;
         if let Some(password) = &input.secrets.proxy_password {
@@ -97,9 +137,9 @@ impl Manager {
         .await?
     }
 
-    /// Bouton « Tester » : storage.to joignable, et quota restant.
-    pub async fn test_storage_to(&self) -> anyhow::Result<String> {
-        StorageTo::from_settings(&self.settings().storage_to)?.check(&self.http()).await
+    /// Bouton « Tester » : service joignable, compte reconnu (et quota restant pour storage.to).
+    pub async fn test_upload_host(&self, host: UploadHost) -> anyhow::Result<String> {
+        Host::open(&host, &self.settings().storage_to, None)?.check(&self.http()).await
     }
 
     /// Poser la question du premier lancement : jamais posée, et Pocket Torrent n'ouvre pas

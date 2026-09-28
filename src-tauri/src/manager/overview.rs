@@ -220,6 +220,9 @@ mod tests {
         };
         let common = Common {
             delivery: Some(Delivery {
+                host: UploadHost::StorageTo,
+                host_name: None,
+                deletable: true,
                 state: DeliveryState::Done,
                 sent_bytes: 10,
                 total_bytes: 10,

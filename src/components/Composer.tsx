@@ -157,8 +157,8 @@ export function Composer ({ prefill, onPrefillUsed, categories, defaultCategory,
           />
           <Select
             compact ariaLabel='Destination' value={dest} onChange={(v) => setDest(v as Dest)}
-            title='Garder les fichiers sur ce PC, ou les envoyer sur storage.to une fois terminés (lien de partage)'
-            options={[{ value: 'local', label: 'Garder sur le PC' }, { value: 'storageTo', label: 'Envoyer sur storage.to' }]}
+            title='Où vont les fichiers : enregistrés dans ton dossier de téléchargements, ou mis en ligne une fois terminés pour obtenir un lien de partage (service choisi dans Réglages › Envoi en ligne)'
+            options={[{ value: 'local', label: 'Enregistrer sur ce PC' }, { value: 'storageTo', label: 'Mettre en ligne une fois fini' }]}
           />
         </div>
       </div>

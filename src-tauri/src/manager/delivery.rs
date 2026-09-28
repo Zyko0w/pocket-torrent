@@ -1,4 +1,4 @@
-//! Envoi sur storage.to une fois le téléchargement fini.
+//! Envoi en ligne une fois le téléchargement fini, sur le service choisi (voir `hosts`).
 
 use super::*;
 
@@ -52,8 +52,8 @@ impl Manager {
             if common.finished_at.is_none() {
                 bail!("Le téléchargement n'est pas terminé.");
             }
-            if common.delivery.as_ref().is_some_and(|d| d.state != DeliveryState::Error) {
-                bail!("Déjà envoyé sur storage.to.");
+            if let Some(delivery) = common.delivery.as_ref().filter(|d| d.state != DeliveryState::Error) {
+                bail!("Déjà envoyé sur {}.", delivery.host_name());
             }
             // gardé avec le téléchargement : un envoi repris au prochain lancement les respecte
             common.send_options = Some(options);
@@ -79,14 +79,19 @@ impl Manager {
             match key {
                 JobKey::Torrent(hash) => {
                     let entry = data.torrents.get(hash).context("téléchargement retiré")?;
-                    (None, entry.name.clone(), entry.common.dest, entry.common.send_options)
+                    (None, entry.name.clone(), entry.common.dest, entry.common.send_options.clone())
                 }
                 JobKey::Direct(id) => {
                     let entry = data.directs.iter().find(|d| &d.id == id).context("téléchargement retiré")?;
                     let path = entry.final_path.clone().context("fichier téléchargé introuvable")?;
                     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(entry.total_bytes);
                     let rel = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    (Some(vec![(rel, path, size)]), entry.name.clone(), entry.common.dest, entry.common.send_options)
+                    (
+                        Some(vec![(rel, path, size)]),
+                        entry.name.clone(),
+                        entry.common.dest,
+                        entry.common.send_options.clone(),
+                    )
                 }
                 JobKey::Pending(_) => bail!("rien à envoyer"),
             }
@@ -97,54 +102,44 @@ impl Manager {
             _ => unreachable!(),
         };
         let name = name.unwrap_or_else(|| "fichiers".into());
-        let storage = StorageTo::from_settings(&settings.storage_to)?;
-        let (storage, expiry_days, delete_local) = match options {
-            Some(o) => (storage.with_limits(o.expiry_days, o.max_downloads), o.expiry_days, o.delete_local),
-            // réglages : seulement pour « Envoyer sur storage.to » choisi à l'ajout
+        let (kind, limits, delete_local) = match options {
+            Some(o) => (o.host.clone(), Some((o.expiry_days, o.max_downloads)), o.delete_local),
+            // réglages : seulement pour « Envoyer en ligne » choisi à l'ajout
             None => {
                 let delete = settings.storage_to.delete_after_upload && dest == Dest::StorageTo;
-                (storage, settings.storage_to.expiry_days, delete)
+                (settings.storage_to.host.clone(), None, delete)
             }
         };
+        let host = Host::open(&kind, &settings.storage_to, limits)?;
         let total: u64 = files.iter().map(|(_, _, size)| size).sum();
 
         self.with_common(key, |c| {
             c.error = None;
             c.error_notified = false;
             c.delivery = Some(Delivery {
+                host: kind,
+                host_name: Some(host.name()),
                 state: DeliveryState::Uploading,
                 sent_bytes: 0,
                 total_bytes: total,
                 links: Vec::new(),
                 expires_at: None,
+                deletable: host.can_delete(),
             });
         });
         self.save_now();
 
         let http = self.http();
-        let mut links = Vec::new();
-        // plusieurs fichiers : une collection, un seul lien pour le tout (en tête de liste)
-        let collection = if files.len() > 1 {
-            let collection = storage.create_collection(&http, files.len()).await?;
-            links.push(Link {
-                name: format!("{name} (tous les fichiers)"),
-                size: total,
-                key: collection.id.clone(),
-                url: collection.url.clone(),
-                kind: "collection".into(),
-                owner_token: collection.owner_token.clone(),
-            });
-            Some(collection)
-        } else {
-            None
-        };
-
+        let mut links: Vec<Link> = Vec::new();
+        // groupe de tous les fichiers (collection, dossier), créé par le service au premier
+        // fichier s'il en fait : un seul lien pour le tout, en tête de liste
+        let mut group: Option<Hosted> = None;
         let mut done_before = 0u64;
         for (rel, path, size) in &files {
             let file_name =
                 Path::new(rel).file_name().map_or_else(|| rel.clone(), |n| n.to_string_lossy().into_owned());
-            let shared = storage
-                .upload(&http, path, &file_name, collection.as_ref(), |sent| {
+            let uploaded = host
+                .upload(&http, path, &file_name, files.len(), group.as_ref(), &mut |sent| {
                     self.with_common(key, |c| {
                         if let Some(d) = c.delivery.as_mut() {
                             d.sent_bytes = done_before + sent;
@@ -154,14 +149,14 @@ impl Manager {
                 .await
                 .with_context(|| format!("envoi de « {rel} »"))?;
             done_before += size;
-            links.push(Link {
-                name: rel.clone(),
-                size: *size,
-                key: shared.id,
-                url: shared.url,
-                kind: "file".into(),
-                owner_token: shared.owner_token,
-            });
+            if let Some(created) = uploaded.group {
+                let group_name = if files.len() > 1 { format!("{name} (tous les fichiers)") } else { rel.clone() };
+                links.insert(0, Link::new(group_name, total, hosts::GROUP, created.clone()));
+                group = Some(created);
+            }
+            if let Some(file) = uploaded.file {
+                links.push(Link::new(rel.clone(), *size, hosts::FILE, file));
+            }
             // liens enregistrés au fil de l'eau : un arrêt en cours d'envoi permet quand même
             // de supprimer ce qui est déjà en ligne
             self.with_common(key, |c| {
@@ -171,10 +166,11 @@ impl Manager {
             });
         }
 
-        let expires_at = Some(now_ms() + u64::from(expiry_days) * 86_400_000);
+        let expires_at = host.expiry_days().map(|days| now_ms() + u64::from(days) * 86_400_000);
         self.with_common(key, |c| {
-            c.delivery =
-                Some(Delivery { state: DeliveryState::Done, sent_bytes: total, total_bytes: total, links, expires_at });
+            if let Some(d) = c.delivery.as_mut() {
+                *d = Delivery { state: DeliveryState::Done, sent_bytes: total, links, expires_at, ..d.clone() };
+            }
         });
 
         if delete_local {
@@ -209,6 +205,10 @@ impl Manager {
     }
 
     fn on_delivery_done(&self, key: &JobKey, result: anyhow::Result<()>) {
+        let host = self
+            .with_common(key, |c| c.delivery.as_ref().map(Delivery::host_name))
+            .flatten()
+            .unwrap_or_else(|| "le service d'hébergement".into());
         let name = {
             let data = self.data.lock();
             match key {
@@ -220,8 +220,8 @@ impl Manager {
         };
         match result {
             Ok(()) => {
-                tracing::info!("envoyé sur storage.to : {name}");
-                self.notify(Notify::Done, "Envoyé sur storage.to", &name);
+                tracing::info!("envoyé sur {host} : {name}");
+                self.notify(Notify::Done, &format!("Envoyé sur {host}"), &name);
             }
             Err(err) => {
                 let message = format!("Envoi en ligne : {err:#}");
@@ -232,7 +232,7 @@ impl Manager {
                         d.state = DeliveryState::Error;
                     }
                 });
-                self.notify(Notify::Error, "Envoi sur storage.to impossible", &format!("{name} : {message}"));
+                self.notify(Notify::Error, &format!("Envoi sur {host} impossible"), &format!("{name} : {message}"));
             }
         }
         self.save_now();

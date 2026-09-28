@@ -18,7 +18,7 @@ import { BlocklistSection, DangerousFilesSection, PrivacySection } from './setti
 import { NetworkSection, NotificationsSection, WindowsSection } from './settings/SystemSections'
 import { AboutPanel } from './AboutPanel'
 import { LogSection, PerformanceSection } from './settings/DiagnosticsSections'
-import { StorageToSection } from './settings/StorageToSection'
+import { UploadSection } from './settings/UploadSection'
 import { RssSection } from './settings/RssSection'
 import { SpeedChart } from './SpeedChart'
 
@@ -35,7 +35,7 @@ export const SETTINGS_TABS: { id: SettingsTab; label: string; icon: ReactNode; a
   { id: 'diagnostics', label: 'Diagnostic', icon: <Stethoscope size={16} />, advanced: true }
 ]
 
-const NO_SECRET_CHANGE: SecretsInput = { storageToToken: null, proxyPassword: null }
+const NO_SECRET_CHANGE: SecretsInput = { storageToToken: null, gofileToken: null, vikingfileUser: null, proxyPassword: null, customHostHeaders: {} }
 
 /** Liste en texte libre (une valeur par ligne ou séparées par des virgules). */
 const toList = (text: string) => text.split(/[\n,]/).map((p) => p.trim()).filter(Boolean)
@@ -203,7 +203,7 @@ export function SettingsView ({ tab, onTabChange, onSaved }: SettingsViewProps) 
         {!advanced && <HiddenAdvanced names={['Liste de blocage d’IP', 'Fichiers dangereux']} onShow={() => setAdvanced(true)} />}
       </>
     ),
-    cloud: <StorageToSection {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
+    cloud: <UploadSection {...section} saved={view.secrets} secrets={draft.secrets} onSecretsChange={(secrets) => edit({ secrets })} />,
     data: (
       <>
         <Section id='s-speed-chart' title='Débit en direct' intro='Réception et envoi de tous les téléchargements, sur les 5 dernières minutes.'>

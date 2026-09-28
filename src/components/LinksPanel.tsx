@@ -1,9 +1,10 @@
 import { Copy, WarningCircle } from '@phosphor-icons/react'
 import { copyText, errorMessage, type Delivery } from '../api'
 import { formatDate, formatSize } from '../format'
+import { hostLabel } from '../uploadHosts'
 import { useToast } from './Toast'
 
-/** Liens de partage storage.to des fichiers envoyés (collection en tête pour plusieurs fichiers). */
+/** Liens de partage des fichiers envoyés en ligne (collection en tête pour plusieurs fichiers). */
 export function LinksPanel ({ delivery }: { delivery: Delivery }) {
   const toast = useToast()
   const expired = delivery.expiresAt !== null && delivery.expiresAt < Date.now()
@@ -23,7 +24,7 @@ export function LinksPanel ({ delivery }: { delivery: Delivery }) {
         <p className={expired ? 'tone-danger meta-item' : 'muted'} style={{ fontSize: 12.5 }}>
           {expired && <WarningCircle size={14} />}
           {delivery.expiresAt === null
-            ? 'Liens storage.to.'
+            ? `Liens ${hostLabel(delivery.host, delivery.hostName)}, effacés par le service après une période sans téléchargement.`
             : expired
               ? `Liens expirés le ${formatDate(delivery.expiresAt)}.`
               : `Liens valables jusqu’au ${formatDate(delivery.expiresAt)}.`}

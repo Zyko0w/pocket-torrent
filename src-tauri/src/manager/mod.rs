@@ -16,9 +16,9 @@ use tauri::async_runtime::JoinHandle;
 use crate::danger;
 use crate::direct::{self, Download, DownloadError, Progress};
 use crate::engine::{Binding, Engine, EngineState, FileView, PeerView, Preview, TorrentView};
+use crate::hosts::{self, Host, Hosted};
 use crate::secrets::{self, Secret};
-use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, VpnMode};
-use crate::storage_to::StorageTo;
+use crate::settings::{GameAction, GameModeSwitch, Settings, SpeedLimits, UploadHost, VpnMode};
 use crate::store::{
     Common, Delivery, DeliveryState, Dest, DirectEntry, Hold, Link, PendingTorrent, Priority, Scan, SendOptions,
     StoreData, TorrentEntry, now_ms,
@@ -152,6 +152,10 @@ pub struct AddReport {
 #[serde(rename_all = "camelCase")]
 pub struct SecretsSet {
     pub storage_to_token: bool,
+    pub gofile_token: bool,
+    pub vikingfile_user: bool,
+    /// Hébergeurs personnalisés qui ont des en-têtes enregistrés (identifiants).
+    pub custom_host_headers: Vec<String>,
     pub proxy_password: bool,
 }
 
@@ -176,6 +180,10 @@ pub struct SettingsView {
 pub struct SecretsInput {
     /// `None` : inchangé ; chaîne vide : effacer.
     pub storage_to_token: Option<String>,
+    pub gofile_token: Option<String>,
+    pub vikingfile_user: Option<String>,
+    /// En-têtes modifiés, par identifiant d'hébergeur personnalisé (chaîne vide : effacer).
+    pub custom_host_headers: std::collections::HashMap<String, String>,
     pub proxy_password: Option<String>,
 }
 

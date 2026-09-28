@@ -1,5 +1,6 @@
 // Appels au moteur Rust (commandes Tauri)
 import { invoke } from '@tauri-apps/api/core'
+import type { CustomHost, UploadHost } from './uploadHosts'
 
 export type JobKind = 'torrent' | 'http'
 export type JobStatus =
@@ -8,16 +9,24 @@ export type JobStatus =
 export type Hold = 'user' | 'queue' | 'game' | 'disk' | 'vpn' | 'seeded'
 export type VpnMode = 'off' | 'adapter' | 'wireguard' | 'proxy'
 export type Priority = 'high' | 'normal' | 'low'
+/** « storageTo » : envoyer en ligne une fois terminé, sur le service choisi dans les réglages. */
 export type Dest = 'local' | 'storageTo'
 
 export interface DeliveryLink { name: string; size: number; key: string; url: string; kind: 'file' | 'collection' }
 
 export interface Delivery {
+  /** Absent : envoi d'une version précédente (storage.to). */
+  host?: UploadHost
+  /** Nom du service au moment de l'envoi. */
+  hostName?: string
   state: 'uploading' | 'done' | 'error'
   sentBytes: number
   totalBytes: number
   links: DeliveryLink[]
+  /** `null` : le service efface les fichiers lui-même, après inactivité. */
   expiresAt: number | null
+  /** Les fichiers en ligne peuvent être supprimés depuis Pocket Torrent. */
+  deletable?: boolean
 }
 
 /** Statistiques cumulées (octets). `since` : début du décompte en ms, 0 si rien compté. */
@@ -199,7 +208,7 @@ export interface Settings {
   checkUpdates: boolean
   magnetPrevious: string | null
   torrentPrevious: string | null
-  storageTo: { expiryDays: number; deleteAfterUpload: boolean; maxDownloads: number }
+  storageTo: { host: UploadHost; customHosts: CustomHost[]; expiryDays: number; deleteAfterUpload: boolean; maxDownloads: number }
   rss: {
     intervalMinutes: number
     feeds: { id: string; name: string; url: string; include: string; exclude: string; category: string | null; enabled: boolean; skipRepeats: boolean; regex: boolean }[]
@@ -212,7 +221,7 @@ export interface Settings {
 
 export interface SettingsView {
   settings: Settings
-  secrets: { storageToToken: boolean; proxyPassword: boolean }
+  secrets: { storageToToken: boolean; gofileToken: boolean; vikingfileUser: boolean; proxyPassword: boolean; customHostHeaders: string[] }
   startWithWindows: boolean
   magnetHandler: boolean
   listenPort: number | null
@@ -225,7 +234,11 @@ export interface SettingsView {
 /** `null` : clé inchangée ; chaîne vide : clé effacée. */
 export interface SecretsInput {
   storageToToken: string | null
+  gofileToken: string | null
+  vikingfileUser: string | null
   proxyPassword: string | null
+  /** En-têtes modifiés des hébergeurs personnalisés, par identifiant (chaîne vide : effacer). */
+  customHostHeaders: Record<string, string>
 }
 
 export interface AddOptions {
@@ -236,8 +249,10 @@ export interface AddOptions {
   onlyFiles: number[] | null
 }
 
-/** Envoi sur storage.to lancé depuis le menu d'un téléchargement terminé. */
+/** Envoi en ligne lancé depuis le menu d'un téléchargement terminé. */
 export interface SendOptions {
+  host: UploadHost
+  /** Durée de vie et limite : storage.to seulement (ignorées par les autres services). */
   expiryDays: number
   /** 0 : sans limite. */
   maxDownloads: number
@@ -294,7 +309,7 @@ export const api = {
     invoke<SettingsView>('save_settings', { input }),
   testNotification: () => invoke<void>('test_notification'),
   /** Renvoie une phrase sur l'état du compte ou le quota restant. */
-  testStorageTo: () => invoke<string>('test_storage_to'),
+  testUploadHost: (host: UploadHost) => invoke<string>('test_upload_host', { host }),
   testDefender: () => invoke<string>('test_defender'),
   performanceSnapshot: () => invoke<PerfSnapshot>('performance_snapshot'),
   exportPerformanceSnapshot: (path: string) => invoke<void>('export_performance_snapshot', { path }),

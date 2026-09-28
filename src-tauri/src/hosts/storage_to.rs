@@ -1,4 +1,4 @@
-//! Envoi des fichiers terminés sur storage.to (https://storage.to/docs/api) et liens de partage.
+//! storage.to (https://storage.to/docs/api) : envoi des fichiers terminés et liens de partage.
 //!
 //! Déroulé : `upload/init` donne une ou plusieurs adresses d'envoi signées (Cloudflare R2 côté
 //! storage.to), les octets y partent directement, puis `upload/confirm` crée le fichier et renvoie
@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::io::AsyncReadExt;
 
+use super::{Hosted, Uploaded};
 use crate::secrets::{self, Secret};
 use crate::settings::{MAX_DOWNLOADS, StorageToSettings};
 
@@ -189,7 +190,7 @@ impl StorageTo {
         client: &reqwest::Client,
         path: &Path,
         file_name: &str,
-        collection: Option<&Shared>,
+        collection_id: Option<&str>,
         mut on_progress: impl FnMut(u64),
     ) -> anyhow::Result<Shared> {
         let size =
@@ -222,8 +223,8 @@ impl StorageTo {
 
         let mut body =
             json!({ "filename": file_name, "size": size, "content_type": content_type, "r2_key": init.r2_key });
-        if let Some(collection) = collection {
-            body["collection_id"] = json!(collection.id);
+        if let Some(collection_id) = collection_id {
+            body["collection_id"] = json!(collection_id);
         }
         let request = self.request(client, reqwest::Method::POST, "/upload/confirm").json(&body);
         let confirmed: Confirmed = api_json(request, "fin de l'envoi").await?;
@@ -338,6 +339,48 @@ impl StorageTo {
             return Ok(()); // expiré ou déjà supprimé
         }
         check_status(response, "suppression").await.map(|_| ())
+    }
+}
+
+impl super::FileHost for StorageTo {
+    async fn check(&self, client: &reqwest::Client) -> anyhow::Result<String> {
+        StorageTo::check(self, client).await
+    }
+
+    /// Plusieurs fichiers : une collection créée avant le premier, un seul lien pour le tout.
+    async fn upload(
+        &self,
+        client: &reqwest::Client,
+        path: &Path,
+        file_name: &str,
+        file_count: usize,
+        group: Option<&Hosted>,
+        on_progress: &mut (dyn FnMut(u64) + Send),
+    ) -> anyhow::Result<Uploaded> {
+        let created = match group {
+            None if file_count > 1 => Some(self.create_collection(client, file_count).await?),
+            _ => None,
+        };
+        let collection_id = created.as_ref().map(|c| c.id.as_str()).or(group.map(|g| g.id.as_str()));
+        let file = StorageTo::upload(self, client, path, file_name, collection_id, on_progress).await?;
+        Ok(Uploaded { group: created.map(Shared::into_hosted), file: Some(file.into_hosted()) })
+    }
+
+    async fn delete(&self, client: &reqwest::Client, kind: &str, id: &str, owner_token: &str) -> anyhow::Result<()> {
+        if owner_token.is_empty() {
+            return Ok(()); // lien d'une ancienne version, sans preuve de propriété : rien à faire
+        }
+        StorageTo::delete(self, client, kind, id, owner_token).await
+    }
+
+    fn expiry_days(&self) -> Option<u8> {
+        Some(self.expiry_days)
+    }
+}
+
+impl Shared {
+    fn into_hosted(self) -> Hosted {
+        Hosted { id: self.id, url: self.url, owner_token: self.owner_token }
     }
 }
 
@@ -597,7 +640,7 @@ mod tests {
         let http = reqwest::Client::new();
         let (path, _) = sandbox_file(4096);
         let collection = client.create_collection(&http, 1).await.unwrap();
-        client.upload(&http, &path, "Film de test.mkv", Some(&collection), |_| {}).await.unwrap();
+        client.upload(&http, &path, "Film de test.mkv", Some(collection.id.as_str()), |_| {}).await.unwrap();
         let s = state.lock().unwrap();
         assert_eq!(s.max_downloads, vec![("ABC123xyz".into(), 1), ("FQxyz1234".into(), 1)]);
         assert_eq!(s.owner_headers, vec!["Owner owner_coll", "Owner owner_file"]);
@@ -619,7 +662,10 @@ mod tests {
         let client = StorageTo::for_tests(&base);
         let (path, data) = sandbox_file(12 * 1024 * 1024);
         let collection = client.create_collection(&reqwest::Client::new(), 2).await.unwrap();
-        client.upload(&reqwest::Client::new(), &path, "Film de test.mkv", Some(&collection), |_| {}).await.unwrap();
+        client
+            .upload(&reqwest::Client::new(), &path, "Film de test.mkv", Some(collection.id.as_str()), |_| {})
+            .await
+            .unwrap();
         let s = state.lock().unwrap();
         assert_eq!(s.received, data, "fichier reconstitué à l'identique");
         assert_eq!(s.parts.iter().map(|p| p.0).collect::<Vec<_>>(), vec![1, 2, 3]);

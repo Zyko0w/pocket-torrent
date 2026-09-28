@@ -5,6 +5,7 @@ mod direct;
 mod dns;
 mod engine;
 mod filedrop;
+mod hosts;
 mod logging;
 mod manager;
 mod natpmp;
@@ -14,7 +15,6 @@ mod relocate;
 mod rss;
 mod secrets;
 mod settings;
-mod storage_to;
 mod store;
 mod system;
 mod toast;
@@ -150,7 +150,7 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::test_notification,
-            commands::test_storage_to,
+            commands::test_upload_host,
             commands::test_defender,
             commands::network_adapters,
             commands::check_public_ip,

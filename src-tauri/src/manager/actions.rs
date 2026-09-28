@@ -191,7 +191,7 @@ impl Manager {
     }
 
     /// Retire un téléchargement (et l'arrête). `delete_files` : fichiers téléchargés ;
-    /// `delete_online` : copies sur storage.to ; `delete_source` : fichier .torrent local d'origine.
+    /// `delete_online` : copies en ligne ; `delete_source` : fichier .torrent local d'origine.
     pub async fn delete(
         self: &Arc<Self>,
         id: &str,
@@ -211,21 +211,17 @@ impl Manager {
             task.abort();
         }
         if delete_online {
-            let links =
-                self.with_common(&key, |c| c.delivery.as_ref().map(|d| d.links.clone())).flatten().unwrap_or_default();
-            if !links.is_empty() {
-                let storage = StorageTo::from_settings(&self.settings().storage_to)?;
+            let delivery = self.with_common(&key, |c| c.delivery.clone()).flatten();
+            // envoi sans compte chez un service qui ne permet pas de supprimer : rien à faire
+            if let Some(delivery) = delivery.filter(|d| d.deletable && !d.links.is_empty()) {
+                let host = Host::open(&delivery.host, &self.settings().storage_to, None)?;
                 let http = self.http();
-                // une collection emporte ses fichiers : inutile de les supprimer un par un
-                let collection = links.iter().any(|l| l.kind == "collection");
-                for link in links.iter().filter(|l| !collection || l.kind == "collection") {
-                    if link.owner_token.is_empty() {
-                        continue;
-                    }
-                    storage
-                        .delete(&http, &link.kind, &link.key, &link.owner_token)
-                        .await
-                        .with_context(|| format!("suppression de « {} » sur storage.to impossible", link.name))?;
+                // un groupe (collection, dossier) emporte ses fichiers : inutile de les supprimer un par un
+                let grouped = delivery.links.iter().any(|l| l.kind == hosts::GROUP);
+                for link in delivery.links.iter().filter(|l| !grouped || l.kind == hosts::GROUP) {
+                    host.delete(&http, &link.kind, &link.key, &link.owner_token).await.with_context(|| {
+                        format!("suppression de « {} » sur {} impossible", link.name, delivery.host_name())
+                    })?;
                 }
             }
         }

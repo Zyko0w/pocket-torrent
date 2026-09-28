@@ -8,6 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::settings::UploadHost;
+
 /// Lecture d'un fichier JSON abîmé : valeurs par défaut, remplacées par chaque valeur
 /// enregistrée qui reste valide (champ par champ ; pour une liste, élément par élément).
 /// Un seul champ ou un seul téléchargement illisible ne fait plus tout perdre.
@@ -110,7 +112,8 @@ pub enum Dest {
     /// Garder sur le PC.
     #[default]
     Local,
-    /// Envoyer sur storage.to une fois terminé.
+    /// Envoyer en ligne une fois terminé (service choisi dans les réglages ; nom d'origine gardé
+    /// pour les téléchargements déjà enregistrés).
     StorageTo,
 }
 
@@ -186,11 +189,14 @@ impl Common {
     }
 }
 
-/// Envoi sur storage.to lancé à la demande, avec ses propres choix.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Envoi en ligne lancé à la demande, avec ses propres choix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendOptions {
-    /// Durée de vie des liens, en jours (1 à 7).
+    /// Service d'hébergement (storage.to si absent : envois enregistrés par une version précédente).
+    #[serde(default)]
+    pub host: UploadHost,
+    /// Durée de vie des liens, en jours (1 à 7 ; storage.to seulement).
     pub expiry_days: u8,
     /// Effacement de storage.to après ce nombre de téléchargements (0 : sans limite).
     pub max_downloads: u16,
@@ -206,16 +212,38 @@ pub enum DeliveryState {
     Error,
 }
 
-/// Envoi en ligne (storage.to) une fois le téléchargement fini.
+/// Envoi en ligne une fois le téléchargement fini.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Delivery {
+    /// Service qui héberge les fichiers (storage.to pour les envois d'avant le choix du service).
+    #[serde(default)]
+    pub host: UploadHost,
+    /// Nom du service au moment de l'envoi (celui d'un hébergeur personnalisé peut changer ou
+    /// disparaître des réglages).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_name: Option<String>,
     pub state: DeliveryState,
     pub sent_bytes: u64,
     pub total_bytes: u64,
     pub links: Vec<Link>,
-    /// Fin de validité des liens (les fichiers disparaissent ensuite de storage.to).
+    /// Fin de validité des liens (storage.to ; les autres services effacent après inactivité).
     pub expires_at: Option<u64>,
+    /// Les fichiers en ligne peuvent être supprimés depuis Pocket Torrent (pas un envoi
+    /// VikingFile sans compte).
+    #[serde(default = "yes")]
+    pub deletable: bool,
+}
+
+impl Delivery {
+    /// Nom du service qui héberge les fichiers.
+    pub fn host_name(&self) -> String {
+        self.host_name.clone().unwrap_or_else(|| self.host.label().to_owned())
+    }
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -223,16 +251,23 @@ pub struct Delivery {
 pub struct Link {
     pub name: String,
     pub size: u64,
-    /// Identifiant storage.to du fichier ou de la collection.
+    /// Identifiant du fichier ou de la collection (dossier) chez le service d'hébergement.
     pub key: String,
     pub url: String,
     /// « file » ou « collection » (tous les fichiers du téléchargement sous un seul lien).
     #[serde(default = "file_kind")]
     pub kind: String,
-    /// Preuve de propriété renvoyée par storage.to, pour supprimer le fichier. Jamais envoyée à
-    /// l'interface (retirée par `overview`).
+    /// Preuve de propriété renvoyée par le service (storage.to, compte invité GoFile), pour
+    /// supprimer le fichier. Vide avec un compte : son jeton reste dans le Gestionnaire
+    /// d'identification. Jamais envoyée à l'interface (retirée par `overview`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub owner_token: String,
+}
+
+impl Link {
+    pub fn new(name: String, size: u64, kind: &str, hosted: crate::hosts::Hosted) -> Self {
+        Self { name, size, key: hosted.id, url: hosted.url, kind: kind.to_owned(), owner_token: hosted.owner_token }
+    }
 }
 
 fn file_kind() -> String {
@@ -349,7 +384,7 @@ impl StoreData {
 
 #[cfg(test)]
 mod dest_tests {
-    use super::Dest;
+    use super::{Delivery, Dest, SendOptions, UploadHost};
 
     #[test]
     fn unknown_destinations_fall_back_to_the_pc() {
@@ -358,6 +393,24 @@ mod dest_tests {
         assert_eq!(parse("\"local\""), Dest::Local);
         assert_eq!(parse("\"inconnue\""), Dest::Local, "destination inconnue : aucun envoi");
         assert_eq!(serde_json::to_string(&Dest::StorageTo).unwrap(), "\"storageTo\"");
+    }
+
+    #[test]
+    fn unknown_upload_hosts_fall_back_to_storage_to() {
+        let parse = |text: &str| serde_json::from_str::<UploadHost>(text).unwrap();
+        assert_eq!(parse("\"gofile\""), UploadHost::Gofile);
+        assert_eq!(parse("\"vikingfile\""), UploadHost::Vikingfile);
+        assert_eq!(parse("\"inconnu\""), UploadHost::StorageTo);
+        assert_eq!(serde_json::to_string(&UploadHost::Vikingfile).unwrap(), "\"vikingfile\"");
+        // envoi enregistré avant le choix du service : storage.to, supprimable
+        let old: Delivery =
+            serde_json::from_str(r#"{"state":"done","sentBytes":1,"totalBytes":1,"links":[],"expiresAt":null}"#)
+                .unwrap();
+        assert_eq!(old.host, UploadHost::StorageTo);
+        assert!(old.deletable);
+        let options: SendOptions =
+            serde_json::from_str(r#"{"expiryDays":3,"maxDownloads":0,"deleteLocal":false}"#).unwrap();
+        assert_eq!(options.host, UploadHost::StorageTo);
     }
 }
 
