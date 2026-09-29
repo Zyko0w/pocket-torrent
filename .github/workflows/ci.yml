@@ -83,7 +83,7 @@ jobs:
         working-directory: src-tauri
         run: cargo test -p librqbit-tracker-comms --lib
 
-      - name: Rust — tests du moteur (librqbit vendorisé : essaims locaux, tests d'intrusion)
+      - name: Rust — tests du moteur (librqbit vendorisé — essaims locaux, tests d'intrusion)
         working-directory: src-tauri/vendor/librqbit
         run: >-
           cargo test --lib --target-dir ../../target/librqbit-tests --no-default-features --features rust-tls
