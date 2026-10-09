@@ -1,6 +1,7 @@
 //! Envoi en ligne une fois le téléchargement fini, sur le service choisi (voir `hosts`).
 
 use super::*;
+use crate::archive;
 
 impl Manager {
     pub(super) fn start_delivery(self: &Arc<Self>, key: JobKey) {
@@ -27,9 +28,10 @@ impl Manager {
         if self.tasks.lock().contains_key(&format!("upload:{}", key.id())) {
             bail!("Envoi déjà en cours.");
         }
+        let host = Host::open(&options.host, &self.settings().storage_to, None)?;
         {
             let mut data = self.data.lock();
-            let common = match &key {
+            let (common, size) = match &key {
                 JobKey::Torrent(hash) => {
                     let entry = data.torrents.get_mut(hash).context("Téléchargement introuvable.")?;
                     if entry.removed {
@@ -38,14 +40,14 @@ impl Manager {
                     if entry.final_folder.is_some() {
                         bail!("Fichiers pas encore rangés dans leur dossier final : réessaie dans un instant.");
                     }
-                    &mut entry.common
+                    (&mut entry.common, entry.wanted_bytes)
                 }
                 JobKey::Direct(id) => {
                     let entry = data.direct_mut(id).context("Téléchargement introuvable.")?;
                     if !entry.final_path.as_deref().is_some_and(Path::is_file) {
                         bail!("Fichier téléchargé introuvable.");
                     }
-                    &mut entry.common
+                    (&mut entry.common, entry.total_bytes)
                 }
                 JobKey::Pending(_) => bail!("Rien à envoyer."),
             };
@@ -55,6 +57,8 @@ impl Manager {
             if let Some(delivery) = common.delivery.as_ref().filter(|d| d.state != DeliveryState::Error) {
                 bail!("Déjà envoyé sur {}.", delivery.host_name());
             }
+            // trop gros pour ce service : refusé tout de suite, un autre peut être choisi
+            check_size(&host, size)?;
             // gardé avec le téléchargement : un envoi repris au prochain lancement les respecte
             common.send_options = Some(options);
         }
@@ -111,7 +115,10 @@ impl Manager {
             }
         };
         let host = Host::open(&kind, &settings.storage_to, limits)?;
-        let total: u64 = files.iter().map(|(_, _, size)| size).sum();
+        let raw_total: u64 = files.iter().map(|(_, _, size)| size).sum();
+        check_size(&host, raw_total)?;
+        // plusieurs fichiers ou un exécutable : un seul zip
+        let zip = archive::needed(&files);
 
         self.with_common(key, |c| {
             c.error = None;
@@ -120,14 +127,47 @@ impl Manager {
                 host: kind,
                 host_name: Some(host.name()),
                 state: DeliveryState::Uploading,
+                compressing: zip,
                 sent_bytes: 0,
-                total_bytes: total,
+                total_bytes: raw_total,
                 links: Vec::new(),
                 expires_at: None,
                 deletable: host.can_delete(),
             });
         });
         self.save_now();
+
+        // effacé à la fin de l'envoi, réussi ou non (et si la tâche est arrêtée)
+        let mut _archive = None;
+        let files = if zip {
+            let first = &files[0];
+            // à côté des fichiers (même disque), sous un nom propre à ce téléchargement
+            let base = first.1.ancestors().nth(Path::new(&first.0).components().count()).unwrap_or(Path::new("."));
+            let path = base.join(format!(".pocket-torrent-envoi-{}.zip", key.id().replace(':', "-")));
+            let temp = archive::TempArchive { path: path.clone() };
+            tracing::info!("{} fichier(s) mis dans un zip avant l'envoi : {}", files.len(), path.display());
+            let size = archive::write_async(path.clone(), files, |done| {
+                self.with_common(key, |c| {
+                    if let Some(d) = c.delivery.as_mut() {
+                        d.sent_bytes = done;
+                    }
+                });
+            })
+            .await
+            .context("préparation de l'archive zip")?;
+            _archive = Some(temp);
+            self.with_common(key, |c| {
+                if let Some(d) = c.delivery.as_mut() {
+                    d.compressing = false;
+                    d.sent_bytes = 0;
+                    d.total_bytes = size;
+                }
+            });
+            vec![(archive::file_name(&name), path, size)]
+        } else {
+            files
+        };
+        let total: u64 = files.iter().map(|(_, _, size)| size).sum();
 
         let http = self.http();
         let mut links: Vec<Link> = Vec::new();
@@ -260,4 +300,18 @@ impl Manager {
             }
         }
     }
+}
+
+/// Tout part en un seul fichier (zip compris) : il doit tenir dans la limite du service.
+fn check_size(host: &Host, size: u64) -> anyhow::Result<()> {
+    if let Some(max) = host.max_file_bytes().filter(|&max| size > max) {
+        const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+        bail!(
+            "Fichier trop volumineux pour {} ({:.1} Go, au plus {:.0} Go par fichier) : choisis un autre hébergeur.",
+            host.name(),
+            size as f64 / GB,
+            max as f64 / GB
+        );
+    }
+    Ok(())
 }

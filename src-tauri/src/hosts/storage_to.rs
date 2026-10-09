@@ -376,6 +376,10 @@ impl super::FileHost for StorageTo {
     fn expiry_days(&self) -> Option<u8> {
         Some(self.expiry_days)
     }
+
+    fn max_file_bytes(&self) -> Option<u64> {
+        Some(MAX_FILE_BYTES)
+    }
 }
 
 impl Shared {
@@ -452,10 +456,7 @@ async fn api_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuild
         serde_json::from_slice(&body).with_context(|| format!("réponse de storage.to illisible ({step})"))?;
     let reason = value.get("error").and_then(|e| e.as_str()).map(|e| e.chars().take(200).collect::<String>());
     if value.get("success") == Some(&serde_json::Value::Bool(false)) || reason.is_some() {
-        bail!(
-            "storage.to a refusé l'étape « {step} »{}",
-            reason.map(|r| format!(" : {r}")).unwrap_or_default()
-        );
+        bail!("storage.to a refusé l'étape « {step} »{}", reason.map(|r| format!(" : {r}")).unwrap_or_default());
     }
     serde_json::from_value(value).with_context(|| format!("réponse de storage.to inattendue ({step})"))
 }
@@ -716,7 +717,10 @@ mod tests {
             .await
             .unwrap_err();
         let message = format!("{err:#}");
-        assert!(message.contains("refusé l'étape « début de l'envoi » : Executable files are not allowed"), "{message}");
+        assert!(
+            message.contains("refusé l'étape « début de l'envoi » : Executable files are not allowed"),
+            "{message}"
+        );
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 

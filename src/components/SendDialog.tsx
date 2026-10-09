@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { CloudArrowUp } from '@phosphor-icons/react'
 import { api, errorMessage, type Job, type SendOptions } from '../api'
+import { formatSize } from '../format'
 import { hostInfo, hostOptions, type CustomHost, type UploadHost } from '../uploadHosts'
 import { Modal } from './Modal'
 import { Select } from './Select'
@@ -44,6 +45,8 @@ export function SendDialog ({ job, onClose, onSent }: SendDialogProps) {
 
   const set = (patch: Partial<SendOptions>) => setOptions((o) => o && { ...o, ...patch })
   const host = hostInfo(options?.host, customHosts)
+  // tout part en un seul fichier (zip pour plusieurs fichiers) : vérifié à chaque choix de service
+  const tooBig = host.maxFileBytes != null && job.wantedBytes > host.maxFileBytes
 
   const send = async () => {
     if (!options) return
@@ -72,6 +75,11 @@ export function SendDialog ({ job, onClose, onSent }: SendDialogProps) {
                 <label htmlFor={`${titleId}-host`}>Service</label>
                 <Select id={`${titleId}-host`} ariaLabel='Service d’hébergement' value={host.id} onChange={(v) => set({ host: v as UploadHost })} options={hostOptions(customHosts)} />
                 <p className='help'>{host.about}</p>
+                {tooBig && (
+                  <p className='field-error' role='alert'>
+                    Fichier trop volumineux pour {host.label} ({formatSize(job.wantedBytes)}, au plus {formatSize(host.maxFileBytes ?? 0)} par fichier) : choisis un autre hébergeur.
+                  </p>
+                )}
               </div>
               {host.limits && (
                 <>
@@ -98,7 +106,7 @@ export function SendDialog ({ job, onClose, onSent }: SendDialogProps) {
         </div>
         <div className='dialog-actions'>
           <button type='button' className='btn btn-ghost' onClick={onClose}>Annuler</button>
-          <button type='submit' className='btn btn-primary' disabled={!options || busy}><CloudArrowUp size={16} /> Envoyer</button>
+          <button type='submit' className='btn btn-primary' disabled={!options || busy || tooBig}><CloudArrowUp size={16} /> Envoyer</button>
         </div>
       </form>
     </Modal>

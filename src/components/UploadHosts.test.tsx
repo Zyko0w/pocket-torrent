@@ -106,6 +106,19 @@ describe('envoi en ligne', () => {
     }))
   })
 
+  it('trop gros pour storage.to : envoi bloqué, un autre service le débloque', async () => {
+    mocked.mockImplementation(async (cmd) => cmd === 'get_settings' ? { settings } : null)
+    const job = makeJob({ status: 'done', finishedAt: 1, dest: 'local', delivery: null, wantedBytes: 30 * 1024 ** 3 })
+    render(<ToastProvider><SendDialog job={job} onClose={vi.fn()} onSent={vi.fn()} /></ToastProvider>)
+    const select = await screen.findByRole('combobox', { name: 'Service d’hébergement' })
+    expect(screen.getByRole('alert').textContent).toMatch(/trop volumineux pour storage\.to.*choisis un autre hébergeur/)
+    expect((screen.getByRole('button', { name: /Envoyer/ }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(select)
+    fireEvent.click(screen.getByRole('option', { name: 'GoFile' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect((screen.getByRole('button', { name: /Envoyer/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('hébergeur personnalisé : ajouté depuis un modèle, puis choisi comme service', () => {
     const update = vi.fn()
     renderSection('storageTo', update)

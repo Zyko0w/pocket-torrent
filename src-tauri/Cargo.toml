@@ -51,6 +51,8 @@ webpki-root-certs = "1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 base64 = "0.22"
+# envoi en ligne : plusieurs fichiers (ou un exécutable) partent dans un seul zip, même version que celle de Tauri
+zip = { version = "4.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 # tests seulement : faux serveur storage.to (JSON) en bac à sable
 [dev-dependencies]

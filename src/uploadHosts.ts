@@ -15,6 +15,8 @@ export interface UploadHostInfo {
   limits: boolean
   /** Ce que deviennent les fichiers en ligne, et les limites sans compte. */
   about: string
+  /** Taille maximale d'un fichier envoyé (un téléchargement de plusieurs fichiers part en un seul zip). */
+  maxFileBytes?: number
   account?: {
     secret: HostSecret
     label: string
@@ -44,6 +46,7 @@ export const UPLOAD_HOSTS: Record<BuiltinHost, UploadHostInfo> = {
     label: 'storage.to',
     limits: true,
     about: 'Liens valables 1 à 7 jours, effacement possible après un nombre de téléchargements. Sans compte : 50 fichiers et 100 Go par 24 h, 25 Go par fichier.',
+    maxFileBytes: 25 * 1024 ** 3,
     account: {
       secret: 'storageToToken',
       label: 'Jeton de compte storage.to (facultatif)',

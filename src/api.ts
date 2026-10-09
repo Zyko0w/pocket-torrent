@@ -20,6 +20,8 @@ export interface Delivery {
   /** Nom du service au moment de l'envoi. */
   hostName?: string
   state: 'uploading' | 'done' | 'error'
+  /** Préparation du zip avant l'envoi (plusieurs fichiers ou un exécutable). */
+  compressing?: boolean
   sentBytes: number
   totalBytes: number
   links: DeliveryLink[]

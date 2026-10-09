@@ -224,6 +224,7 @@ mod tests {
                 host_name: None,
                 deletable: true,
                 state: DeliveryState::Done,
+                compressing: false,
                 sent_bytes: 10,
                 total_bytes: 10,
                 links: vec![link],

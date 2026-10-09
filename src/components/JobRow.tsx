@@ -1,6 +1,6 @@
 import { memo, useState, type ReactNode } from 'react'
 import {
-  ArrowClockwise, ArrowDown, Broadcast, ChartLine, CaretDown, CheckCircle, Clock, CloudArrowUp, Copy, FolderOpen, Gauge,
+  ArrowClockwise, ArrowDown, Broadcast, ChartLine, CaretDown, CheckCircle, Clock, CloudArrowUp, Copy, FileZip, FolderOpen, Gauge,
   GameController, HardDrives, Lightning, LinkSimple, ListChecks, MagnetStraight, MagnifyingGlass, Pause, Play,
   ShareNetwork, ShieldCheck, ShieldWarning, SpinnerGap, SquaresFour, Trash, Users, WarningCircle, X
 } from '@phosphor-icons/react'
@@ -36,7 +36,9 @@ function statusOf (job: Job): StatusInfo {
       if (job.hold === 'vpn') return { label: 'Pause · VPN', tone: 'tone-danger', icon: <ShieldWarning size={16} /> }
       return { label: 'En pause', tone: 'tone-warning', icon: <Pause size={16} /> }
     case 'seeding': return { label: 'Partage', tone: 'tone-success', icon: <ShareNetwork size={16} /> }
-    case 'uploading': return { label: 'Envoi en ligne', tone: 'tone-active', icon: <CloudArrowUp size={16} /> }
+    case 'uploading':
+      if (job.delivery?.compressing) return { label: 'Compression (zip)', tone: 'tone-active', icon: <FileZip size={16} /> }
+      return { label: 'Envoi en ligne', tone: 'tone-active', icon: <CloudArrowUp size={16} /> }
     case 'done':
       if (job.hold === 'seeded') return { label: 'Ratio atteint', tone: 'tone-success', icon: <CheckCircle size={16} /> }
       return { label: 'Terminé', tone: 'tone-success', icon: <CheckCircle size={16} /> }

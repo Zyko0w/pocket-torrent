@@ -224,6 +224,9 @@ pub struct Delivery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_name: Option<String>,
     pub state: DeliveryState,
+    /// Préparation de l'archive zip avant l'envoi (`sent_bytes` : octets déjà mis dedans).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub compressing: bool,
     pub sent_bytes: u64,
     pub total_bytes: u64,
     pub links: Vec<Link>,

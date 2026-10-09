@@ -1,4 +1,5 @@
 mod antivirus;
+mod archive;
 mod commands;
 mod danger;
 mod direct;

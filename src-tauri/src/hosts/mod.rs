@@ -82,6 +82,11 @@ pub trait FileHost {
     fn expiry_days(&self) -> Option<u8> {
         None
     }
+
+    /// Taille maximale d'un fichier envoyé ; `None` : pas de limite connue.
+    fn max_file_bytes(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// Service choisi, prêt à l'emploi.
@@ -175,5 +180,9 @@ impl Host {
 
     pub fn expiry_days(&self) -> Option<u8> {
         dispatch!(self, host => FileHost::expiry_days(host))
+    }
+
+    pub fn max_file_bytes(&self) -> Option<u64> {
+        dispatch!(self, host => FileHost::max_file_bytes(host))
     }
 }
