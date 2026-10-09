@@ -4,7 +4,7 @@ import {
   GameController, HardDrives, Lightning, LinkSimple, ListChecks, MagnetStraight, MagnifyingGlass, Pause, Play,
   ShareNetwork, ShieldCheck, ShieldWarning, SpinnerGap, SquaresFour, Trash, Users, WarningCircle, X
 } from '@phosphor-icons/react'
-import { api, copyText, errorMessage, type Job, type Priority } from '../api'
+import { api, copyText, errorMessage, isSending, type Job, type Priority } from '../api'
 import { PRIORITY_LABELS, formatDate, formatEta, formatRatio, formatSize, formatSpeed, percent, plural } from '../format'
 import { FilesPanel } from './FilesPanel'
 import { LinksPanel } from './LinksPanel'
@@ -219,7 +219,9 @@ export const JobRow = memo(function JobRow ({ job, categoryName, onDelete, onCha
   if (!isPending && !['done', 'error', 'seeding'].includes(job.status)) {
     menu.push({ label: 'Limiter la vitesse…', icon: <Gauge size={16} />, separated: true, onSelect: () => { setLimit(String(job.limitKbps)); setLimitOpen(true) } })
   }
-  if (finished && !job.delivery && (!isTorrent || job.inEngine)) {
+  // aussi après un envoi raté : nouvel essai, avec d'autres choix au besoin
+  const sendFailed = isSending(job) && job.delivery?.state === 'error'
+  if ((finished || sendFailed) && (!job.delivery || sendFailed) && (!isTorrent || job.inEngine)) {
     menu.push({
       label: 'Envoyer en ligne…',
       hint: 'Lien de partage sur storage.to, GoFile ou VikingFile',

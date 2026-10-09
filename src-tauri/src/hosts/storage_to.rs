@@ -443,9 +443,21 @@ async fn check_status(response: reqwest::Response, step: &str) -> anyhow::Result
     )
 }
 
+/// Un refus peut arriver avec un statut 200 (`{"success": false, "error": "…"}`) : sa raison est
+/// montrée telle quelle. Le corps lui-même n'apparaît jamais (il peut contenir une adresse signée).
 async fn api_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder, step: &str) -> anyhow::Result<T> {
     let response = check_status(send(request, "storage.to injoignable").await?, step).await?;
-    response.json::<T>().await.with_context(|| format!("réponse de storage.to illisible ({step})"))
+    let body = response.bytes().await.map_err(|err| anyhow::Error::from(err.without_url()))?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&body).with_context(|| format!("réponse de storage.to illisible ({step})"))?;
+    let reason = value.get("error").and_then(|e| e.as_str()).map(|e| e.chars().take(200).collect::<String>());
+    if value.get("success") == Some(&serde_json::Value::Bool(false)) || reason.is_some() {
+        bail!(
+            "storage.to a refusé l'étape « {step} »{}",
+            reason.map(|r| format!(" : {r}")).unwrap_or_default()
+        );
+    }
+    serde_json::from_value(value).with_context(|| format!("réponse de storage.to inattendue ({step})"))
 }
 
 async fn put_with_retry(
@@ -687,6 +699,25 @@ mod tests {
         }
         assert!(client.delete(&http, "../admin", "FQxyz1234", "owner_file").await.is_err());
         assert_eq!(state.lock().unwrap().deleted, vec!["FQxyz1234"]);
+    }
+
+    #[tokio::test]
+    async fn refusal_sent_with_status_200_shows_its_reason() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/api", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/api/upload/init",
+            post(|| async { Json(json!({ "success": false, "error": "Executable files are not allowed" })) }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let (path, _) = sandbox_file(4096);
+        let err = StorageTo::for_tests(&base)
+            .upload(&reqwest::Client::new(), &path, "QuickSFV.EXE", None, |_| {})
+            .await
+            .unwrap_err();
+        let message = format!("{err:#}");
+        assert!(message.contains("refusé l'étape « début de l'envoi » : Executable files are not allowed"), "{message}");
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
     #[test]

@@ -357,7 +357,11 @@ export function errorMessage (err: unknown): string {
   return String(err)
 }
 
-export const isFinished = (job: Job) => job.status === 'done' || job.status === 'seeding'
+/** Envoi en ligne d'un téléchargement terminé, en cours ou raté : le téléchargement reste « terminé ». */
+export const isSending = (job: Job) =>
+  job.finishedAt != null && job.delivery != null && (job.status === 'uploading' || job.status === 'error')
+
+export const isFinished = (job: Job) => job.status === 'done' || job.status === 'seeding' || isSending(job)
 
 /** Copie dans le presse-papiers (côté Rust : l'API du navigateur exige que la page ait le focus). */
 export async function copyText (text: string) {

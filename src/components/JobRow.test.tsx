@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { isFinished } from '../api'
 import defaults from '../test/defaultSettings.json'
 import { makeJob } from '../test/job'
 import { JobRow } from './JobRow'
@@ -73,6 +74,18 @@ describe('JobRow (envoi en ligne)', () => {
       id: job.id, options: { host: 'storageTo', expiryDays: 7, maxDownloads: 1, deleteLocal: true }
     }))
     vi.mocked(invoke).mockImplementation(async () => null)
+  })
+
+  it('envoi raté : reste dans les terminés et peut être relancé', () => {
+    const delivery = { host: 'storageTo' as const,state: 'error' as const, sentBytes: 0, totalBytes: 10, links: [], expiresAt: null, deletable: true }
+    const job = makeJob({ status: 'error', finishedAt: 1, dest: 'local', delivery })
+    expect(isFinished(job)).toBe(true)
+    expect(isFinished(makeJob({ ...job, status: 'uploading', delivery: { ...delivery, state: 'uploading' } }))).toBe(true)
+    // téléchargement lui-même en erreur : pas terminé
+    expect(isFinished(makeJob({ status: 'error', finishedAt: null, delivery: null }))).toBe(false)
+    renderRow(job)
+    fireEvent.click(screen.getByRole('button', { name: 'Plus d’actions' }))
+    expect(screen.getByRole('menuitem', { name: /Envoyer en ligne/ })).toBeTruthy()
   })
 
   it('une fois envoyé, un bouton copie le lien du dossier complet', async () => {
