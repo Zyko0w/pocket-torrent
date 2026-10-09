@@ -52,6 +52,13 @@
   (BEP 40), identifiants DHT sécurisés (BEP 42), perçage de NAT (BEP 55).
 - Ouverture automatique du port sur le routeur (UPnP, NAT-PMP).
 
+## Correctifs de la 0.5.2
+
+- Envoi en ligne refusé par storage.to : la raison donnée par le service est affichée, au lieu de
+  « réponse de storage.to illisible ».
+- Un téléchargement terminé reste dans « Terminés » pendant son envoi en ligne et après un échec ;
+  l'envoi peut y être relancé (« Réessayer », ou « Envoyer en ligne… » pour changer de service ou de réglages).
+
 ## Correctifs de la 0.5.1
 
 - Vitesse au démarrage d'un torrent : elle n'alterne plus entre ~39 Ko/s et 0 quand les premières données

@@ -1,6 +1,6 @@
 [package]
 name = "pocket-torrent"
-version = "0.5.1"
+version = "0.5.2"
 description = "Pocket Torrent : torrents et liens directs, avec VPN"
 authors = ["Nans"]
 edition = "2024"
