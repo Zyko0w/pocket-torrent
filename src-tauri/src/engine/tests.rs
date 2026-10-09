@@ -116,7 +116,7 @@ mod sandbox_tests {
         assert!(incomplete.exists(), "le dossier « en cours » reste");
         let view = wait_finished(&engine, &hash).await;
         assert_eq!(view.output_folder, folder);
-        assert!(view.finished, "toutes les pièces retrouvées au nouvel emplacement");
+        assert!(view.finished, "toutes les pièces retrouvées au nouvel emplacement ({:?}, {:?})", view.state, view.error);
         engine.stop().await;
     }
 
@@ -138,7 +138,7 @@ mod sandbox_tests {
         assert!(!finale.join("Série S01").join("Sous-titres").exists(), "rien de déplacé");
         let view = wait_finished(&engine, &hash).await;
         assert_eq!(view.output_folder, incomplete.join("Série S01"));
-        assert!(view.finished, "toujours complet à l'ancien emplacement");
+        assert!(view.finished, "toujours complet à l'ancien emplacement ({:?}, {:?})", view.state, view.error);
         engine.stop().await;
     }
 

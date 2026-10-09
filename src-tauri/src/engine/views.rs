@@ -10,7 +10,7 @@ pub(super) struct PeerSample {
     up: f64,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EngineState {
     Initializing,
     Live,
