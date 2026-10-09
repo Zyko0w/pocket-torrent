@@ -52,6 +52,13 @@
   (BEP 40), identifiants DHT sécurisés (BEP 42), perçage de NAT (BEP 55).
 - Ouverture automatique du port sur le routeur (UPnP, NAT-PMP).
 
+## Nouveautés de la 0.5.3
+
+- Envoi en ligne d'un dossier de plusieurs fichiers : tout est mis dans un seul zip avant l'envoi (un seul lien,
+  dossiers gardés). Un programme seul (.exe…) part aussi dans un zip : storage.to refuse les exécutables.
+- Envoi trop gros pour le service choisi (plus de 25 Go pour storage.to) : refusé avec « choisis un autre
+  hébergeur », vérifié dans la fenêtre d'envoi à chaque choix de service.
+
 ## Correctifs de la 0.5.2
 
 - Envoi en ligne refusé par storage.to : la raison donnée par le service est affichée, au lieu de
