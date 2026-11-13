@@ -1,19 +1,37 @@
 <p align="center">
-  <img src="logo.png" width="112" alt="Pocket Torrent">
+  <img src="logo.png" width="120" alt="Logo Pocket Torrent">
 </p>
 
 <h1 align="center">Pocket Torrent</h1>
 
 <p align="center">
   Client BitTorrent pour Windows, avec VPN intégré et téléchargements directs.<br>
-  <a href="https://github.com/Zyko0w/pocket-torrent-releases/releases/latest"><b>Télécharger la dernière version</b></a>
+  Rapide, privé, sans compte ni télémétrie.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Zyko0w/pocket-torrent-releases/releases/latest"><b>⬇️ Télécharger la dernière version</b></a>
+</p>
+
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.5.3-7C3AED">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white">
+  <img alt="Mises à jour signées" src="https://img.shields.io/badge/mises%20%C3%A0%20jour-sign%C3%A9es-2EA043">
 </p>
 
 ---
 
+## Présentation
+
+Pocket Torrent est un client BitTorrent léger pour Windows, construit sur un moteur Rust. Il gère les liens magnet,
+les fichiers `.torrent` et les liens directs, protège la connexion avec un VPN WireGuard intégré, et peut mettre
+les fichiers terminés en ligne avec un lien de partage.
+
+Ce dépôt contient les versions publiées : installateurs signés et fichiers de mise à jour.
+
 ## Fonctionnalités
 
-**Téléchargement**
+### ⬇️ Téléchargement
 - Liens magnet, fichiers `.torrent` (y compris par glisser-déposer) et liens directs HTTP(S) avec reprise.
 - Sélection et ordre de priorité des fichiers, avant et pendant le téléchargement.
 - File d'attente à trois niveaux de priorité, qui déterminent l'ordre de démarrage et la part de bande passante.
@@ -25,7 +43,7 @@
 - Liens magnet copiés proposés à l'ajout au retour sur la fenêtre.
 - Partage avec ratio et durée maximum.
 
-**Confidentialité**
+### 🛡️ Confidentialité
 - Liaison stricte à l'interface du VPN, avec arrêt immédiat en cas de coupure et reprise automatique.
 - Tunnel WireGuard intégré (import du fichier `.conf` du fournisseur), limité aux téléchargements.
 - Proxy SOCKS5 : tout le trafic des téléchargements passe par lui, sans fuite.
@@ -35,7 +53,7 @@
 - Liste de blocage d'IP, détection des fichiers dangereux, analyse Microsoft Defender en option.
 - Aucune télémétrie, aucun compte.
 
-**Utilisation**
+### 🎮 Utilisation
 - Mode jeu : ralentissement ou pause automatique au lancement d'un jeu.
 - Arrêt du PC à la fin des téléchargements.
 - Démarrage avec Windows, association des liens magnet et `.torrent`, notifications.
@@ -45,34 +63,36 @@
 - Graphique du débit en direct (global et par téléchargement), statistiques, état des trackers.
 - Export et import de la liste de téléchargements.
 
-**Moteur**
+### ⚙️ Moteur
 - Basé sur [librqbit](https://github.com/ikatson/rqbit) (Rust), étendu pour Pocket Torrent.
 - DHT, PEX, trackers HTTP/UDP, µTP, sources web (BEP 19), extension Fast (BEP 6), partage partiel (BEP 21),
   sélection des pièces les plus rares, réciprocité d'envoi, fin de partie (end-game), priorité des pairs
   (BEP 40), identifiants DHT sécurisés (BEP 42), perçage de NAT (BEP 55).
 - Ouverture automatique du port sur le routeur (UPnP, NAT-PMP).
 
-## Nouveautés de la 0.5.3
+## Historique des versions
+
+### Nouveautés de la 0.5.3
 
 - Envoi en ligne d'un dossier de plusieurs fichiers : tout est mis dans un seul zip avant l'envoi (un seul lien,
   dossiers gardés). Un programme seul (.exe…) part aussi dans un zip : storage.to refuse les exécutables.
 - Envoi trop gros pour le service choisi (plus de 25 Go pour storage.to) : refusé avec « choisis un autre
   hébergeur », vérifié dans la fenêtre d'envoi à chaque choix de service.
 
-## Correctifs de la 0.5.2
+### Correctifs de la 0.5.2
 
 - Envoi en ligne refusé par storage.to : la raison donnée par le service est affichée, au lieu de
   « réponse de storage.to illisible ».
 - Un téléchargement terminé reste dans « Terminés » pendant son envoi en ligne et après un échec ;
   l'envoi peut y être relancé (« Réessayer », ou « Envoyer en ligne… » pour changer de service ou de réglages).
 
-## Correctifs de la 0.5.1
+### Correctifs de la 0.5.1
 
 - Vitesse au démarrage d'un torrent : elle n'alterne plus entre ~39 Ko/s et 0 quand les premières données
   arrivent au compte-gouttes. Mesurée sur une seconde à débit normal, sur quelques secondes quand il est
   très faible ; le temps restant est plus stable aussi.
 
-## Nouveautés de la 0.5.0
+### Nouveautés de la 0.5.0
 
 - Mise en ligne sur d'autres services que storage.to : GoFile (un dossier et un seul lien par
   téléchargement) et VikingFile (un lien par fichier), avec compte facultatif. Le service se choisit
@@ -84,20 +104,20 @@
 - Zone d'ajout : « Enregistrer sur ce PC » et « Mettre en ligne une fois fini » remplacent
   « Garder sur le PC » et « Envoyer sur storage.to ».
 
-## Nouveautés de la 0.4.3
+### Nouveautés de la 0.4.3
 
 - Bouton « Copier le lien storage.to » sur la ligne d'un téléchargement envoyé (lien du dossier complet
   s'il y en a un, sinon du fichier ; désactivé une fois le lien expiré).
 - Fenêtre d'envoi sur storage.to : les listes (durée de vie, nombre de téléchargements) s'ouvraient
   derrière la fenêtre et ne pouvaient pas être utilisées.
 
-## Nouveautés de la 0.4.2
+### Nouveautés de la 0.4.2
 
 - Envoi sur storage.to à la demande : menu ⋯ d'un téléchargement terminé, avec durée de vie du lien,
   effacement après N téléchargements et, en option, effacement des fichiers du PC.
 - Nouveau réglage storage.to : effacement des fichiers en ligne après N téléchargements.
 
-## Correctifs de la 0.4.1
+### Correctifs de la 0.4.1
 
 - Notifications : elles ne s'affichaient pas (application non déclarée à Windows). Le bouton de test
   indique désormais pourquoi une notification ne peut pas s'afficher.
@@ -105,7 +125,7 @@
   fichier transmis même pendant le démarrage.
 - Analyse Microsoft Defender : résultat affiché sous chaque téléchargement terminé, bouton de test.
 
-## Nouveautés de la 0.4.0
+### Nouveautés de la 0.4.0
 
 | Ajouté | Retiré |
 | --- | --- |
@@ -117,12 +137,12 @@
 Sécurité : audit et test d'intrusion complets ; une dizaine de failles corrigées, dont deux sérieuses
 (un paquet réseau pouvait arrêter la DHT ; un fichier de réglages abîmé désactivait le VPN obligatoire).
 
-## Correctifs de la 0.2.2
+### Correctifs de la 0.2.2
 
 - Plantage de l'application lors de la lecture du presse-papiers (retour sur la fenêtre).
 - Fenêtres de console qui s'ouvraient pendant l'analyse Microsoft Defender et l'arrêt programmé du PC.
 
-## Nouveautés de la 0.2.1
+### Nouveautés de la 0.2.1
 
 | Ajouté | Retiré |
 | --- | --- |
@@ -166,7 +186,7 @@ Pocket Torrent n'établit que les connexions suivantes :
 - routeur, pour l'ouverture du port (UPnP, NAT-PMP ; désactivée avec le VPN et en mode renforcé) ;
 - serveur VPN, pour la redirection de port (si activée) ;
 - proxy SOCKS5 choisi dans les réglages (s'il est activé, tout le trafic des téléchargements passe par lui) ;
-- storage.to, pour les téléchargements marqués « Envoyer sur storage.to » ;
+- hébergeur choisi pour la mise en ligne (storage.to, GoFile, VikingFile ou personnalisé), seulement pour les envois demandés ;
 - serveurs des flux RSS configurés (par le même chemin réseau que les téléchargements).
 
 ## Désinstallation
@@ -179,6 +199,3 @@ conservés. Une option de l'assistant permet d'effacer aussi les réglages et la
 Pocket Torrent est un outil de partage de fichiers. Son utilisation doit se limiter aux contenus que vous
 êtes autorisé à télécharger et à partager.
 
----
-
-<sub>Ce dépôt contient uniquement les versions publiées : installateurs signés et fichiers de mise à jour.</sub>
